@@ -1,9 +1,6 @@
 # =========================================================
 # wrangler.toml – Konfiguration für das Cloudflare-Pages-Projekt
 # (statische App + Functions unter /api/*).
-#
-# WICHTIG: "database_id" unten muss nach dem Anlegen der
-# D1-Datenbank ersetzt werden (siehe SETUP-ANLEITUNG.md).
 # =========================================================
 
 name = "shk-baustellenplaner"
