@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Baustellenplaner – Projekte &amp; Ausschreibungen</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-title">Baustellenplaner</span>
+      <span class="brand-sub">SHK-Projekt- &amp; Ausschreibungsplanung</span>
+    </div>
+    <nav class="main-nav" id="mainNav">
+      <button class="nav-btn active" data-view="planner">Projektplaner</button>
+      <button class="nav-btn" data-view="ausschreibungen">Ausschreibungen</button>
+      <button class="nav-btn" data-view="settings">Einstellungen</button>
+    </nav>
+    <div class="topbar-actions">
+      <div class="search-box">
+        <input id="globalSearch" type="search" placeholder="Suche nach Projekt, Ausschreibung, Kunde ...">
+      </div>
+      <span id="currentUserLabel" class="current-user-label hidden"></span>
+      <span id="saveIndicator" class="save-indicator">Gespeichert</span>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ================= PROJEKTPLANER ================= -->
+    <section id="view-planner" class="view active">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="btn btn-primary" id="btnNewProject">+ Neues Projekt</button>
+        </div>
+        <div class="toolbar-group">
+          <button class="icon-btn" id="btnPrevYear" title="Vorheriges Jahr">‹</button>
+          <span class="year-label" id="yearLabel">2026</span>
+          <button class="icon-btn" id="btnNextYear" title="Nächstes Jahr">›</button>
+          <button class="btn btn-ghost" id="btnToday">Heute</button>
+        </div>
+        <div class="toolbar-group zoom-group">
+          <span class="toolbar-label">Zoom</span>
+          <button class="zoom-btn" data-zoom="month">Monat</button>
+          <button class="zoom-btn" data-zoom="quarter">Quartal</button>
+          <button class="zoom-btn" data-zoom="half">Halbjahr</button>
+          <button class="zoom-btn active" data-zoom="year">Jahr</button>
+        </div>
+        <div class="toolbar-group filter-group">
+          <select id="filterStatus" class="select-input">
+            <option value="">Alle Status</option>
+          </select>
+          <select id="filterLeiter" class="select-input">
+            <option value="">Alle Projektleiter</option>
+          </select>
+          <label class="checkbox-label">
+            <input type="checkbox" id="toggleAusschreibungen" checked>
+            Ausschreibungsvorschau
+          </label>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn btn-ghost" id="btnExportProjects">Export</button>
+          <button class="btn btn-ghost" id="btnPrintPlanner">Drucken / PDF</button>
+        </div>
+      </div>
+
+      <div id="capacityWarning" class="capacity-warning hidden"></div>
+
+      <div class="gantt-wrapper">
+        <div class="gantt-scroll" id="ganttScroll">
+          <div class="gantt-inner" id="ganttInner">
+            <div class="gantt-side-header">Projekt</div>
+            <div class="gantt-header" id="ganttHeader"></div>
+            <div class="gantt-side" id="ganttSide"></div>
+            <div class="gantt-body" id="ganttBody"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="capacity-panel">
+        <div class="capacity-panel-header">
+          <span>Kapazitätsauslastung je Kalenderwoche</span>
+          <label class="checkbox-label small">
+            <input type="checkbox" id="toggleShowMitarbeiter" checked>
+            Mitarbeitende anzeigen
+          </label>
+        </div>
+        <div class="capacity-scroll" id="capacityScroll">
+          <div class="capacity-inner" id="capacityInner">
+            <div class="capacity-side">
+              <div class="capacity-row-label">Projekte</div>
+              <div class="capacity-row-label">Mitarbeitende</div>
+            </div>
+            <div class="capacity-bars" id="capacityBars"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= AUSSCHREIBUNGEN ================= -->
+    <section id="view-ausschreibungen" class="view">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="btn btn-primary" id="btnNewAusschreibung">+ Neue Ausschreibung</button>
+        </div>
+        <div class="toolbar-group filter-group">
+          <select id="filterAusschreibungStatus" class="select-input">
+            <option value="">Alle Status</option>
+          </select>
+          <select id="filterAusschreibungZustaendig" class="select-input">
+            <option value="">Alle zuständigen Personen</option>
+          </select>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn btn-ghost" id="btnExportAusschreibungen">Export</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table id="ausschreibungenTable" class="data-table">
+          <thead>
+            <tr id="ausschreibungenHeadRow"></tr>
+          </thead>
+          <tbody id="ausschreibungenBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= EINSTELLUNGEN ================= -->
+    <section id="view-settings" class="view">
+      <div class="settings-grid">
+
+        <div class="settings-card">
+          <h3>Projektleiter</h3>
+          <p class="settings-hint">Werden im Projektplaner zur Auswahl angeboten.</p>
+          <ul class="tag-list" id="listProjektleiter"></ul>
+          <div class="add-row">
+            <input type="text" id="inputNeuerProjektleiter" placeholder="Name hinzufügen">
+            <button class="btn btn-ghost" id="btnAddProjektleiter">Hinzufügen</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Obermonteure</h3>
+          <p class="settings-hint">Werden im Projektplaner zur Auswahl angeboten.</p>
+          <ul class="tag-list" id="listObermonteure"></ul>
+          <div class="add-row">
+            <input type="text" id="inputNeuerObermonteur" placeholder="Name hinzufügen">
+            <button class="btn btn-ghost" id="btnAddObermonteur">Hinzufügen</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Kapazitätsgrenzen</h3>
+          <p class="settings-hint">Ab diesen Werten wird eine Kalenderwoche farblich als kritisch markiert.</p>
+          <div class="form-row">
+            <label>Warnung ab Anzahl Projekte je KW</label>
+            <input type="number" id="settingWarnProjekte" min="1">
+          </div>
+          <div class="form-row">
+            <label>Kritisch ab Anzahl Projekte je KW</label>
+            <input type="number" id="settingKritischProjekte" min="1">
+          </div>
+          <div class="form-row">
+            <label>Verfügbare Mitarbeitende gesamt</label>
+            <input type="number" id="settingMitarbeiterGesamt" min="1">
+          </div>
+          <button class="btn btn-primary" id="btnSaveSettings">Speichern</button>
+        </div>
+
+        <div class="settings-card">
+          <h3>Projektfarben</h3>
+          <p class="settings-hint">Standardpalette für neue Projekte. Die Farbe je Projekt kann beim Bearbeiten geändert werden.</p>
+          <div class="color-palette" id="colorPalette"></div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Daten</h3>
+          <p class="settings-hint">Alle Daten werden lokal im Browser gespeichert (Local Storage).</p>
+          <button class="btn btn-ghost" id="btnResetDemoData">Beispieldaten zurücksetzen</button>
+          <button class="btn btn-ghost danger" id="btnClearAllData">Alle Daten löschen</button>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastRoot" class="toast-root"></div>
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="loading-box">Projektdaten werden geladen …</div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/api.js"></script>
+<script src="js/state.js"></script>
+<script src="js/gantt.js"></script>
+<script src="js/capacity.js"></script>
+<script src="js/ausschreibungen.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/export.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
