@@ -2,6 +2,9 @@
    POST /api/projects – neues Projekt anlegen
    Die ID wird im Frontend erzeugt (Util.uid) und mitgeschickt,
    damit die Gantt-Ansicht sofort ohne Rückfrage rendern kann.
+
+   body.employeeIds: string[]  – zugeordnete Mitarbeiter (optional)
+   body.tags:        string[]  – Projekt-Tags (optional)
    ========================================================= */
 
 import { json, errorResponse } from "../_utils.js";
@@ -21,32 +24,49 @@ export async function onRequestPost(context) {
   }
 
   const now = new Date().toISOString();
+  const employeeIds = Array.isArray(body.employeeIds) ? body.employeeIds : [];
+  const tags = Array.isArray(body.tags) ? body.tags : [];
 
   try {
-    await db.prepare(
-      `INSERT INTO projects
-        (id, name, auftraggeber, adresse, startYear, startWeek, endYear, endWeek,
-         projektleiter, obermonteur, besetzung, status, farbe, bemerkungen, notizen, createdAt, updatedAt)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(
-      body.id,
-      body.name,
-      body.auftraggeber || "",
-      body.adresse || "",
-      body.startYear,
-      body.startWeek,
-      body.endYear,
-      body.endWeek,
-      body.projektleiter || "",
-      body.obermonteur || "",
-      body.besetzung || 0,
-      body.status || "Geplant",
-      body.farbe || "#2f6fed",
-      body.bemerkungen || "",
-      body.notizen || "",
-      body.createdAt || now,
-      body.updatedAt || now
-    ).run();
+    const statements = [
+      db.prepare(
+        `INSERT INTO projects
+          (id, name, auftraggeber, adresse, startYear, startWeek, endYear, endWeek,
+           projektleiter, obermonteur, besetzung, status, farbe, bemerkungen, notizen, createdAt, updatedAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        body.id,
+        body.name,
+        body.auftraggeber || "",
+        body.adresse || "",
+        body.startYear,
+        body.startWeek,
+        body.endYear,
+        body.endWeek,
+        body.projektleiter || "",
+        body.obermonteur || "",
+        body.besetzung || 0,
+        body.status || "Geplant",
+        body.farbe || "#2f6fed",
+        body.bemerkungen || "",
+        body.notizen || "",
+        body.createdAt || now,
+        body.updatedAt || now
+      )
+    ];
+
+    employeeIds.forEach((empId) => {
+      statements.push(
+        db.prepare("INSERT INTO project_employees (projectId, employeeId) VALUES (?, ?)").bind(body.id, empId)
+      );
+    });
+    tags.forEach((tag) => {
+      statements.push(
+        db.prepare("INSERT INTO project_tags (projectId, tag) VALUES (?, ?)").bind(body.id, tag)
+      );
+    });
+
+    await db.batch(statements);
 
     return json({ ok: true, id: body.id }, { status: 201 });
   } catch (err) {

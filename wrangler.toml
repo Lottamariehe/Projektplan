@@ -6,11 +6,11 @@
 # D1-Datenbank ersetzt werden (siehe SETUP-ANLEITUNG.md).
 # =========================================================
 
-name = "projektplan"
+name = "shk-baustellenplaner"
 compatibility_date = "2026-01-01"
 pages_build_output_dir = "."
 
 [[d1_databases]]
 binding = "DB"
-database_name = "projektplan"
-database_id = "69ae8692-b3cc-4f84-8d72-df2a214356b3"
+database_name = "shk_baustellenplaner_db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"

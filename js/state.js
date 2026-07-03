@@ -22,6 +22,8 @@
     state: {
       projects: [],
       tenders: [],
+      employees: [],
+      portals: [],
       settings: null,
       ui: {
         view: "planner",
@@ -29,8 +31,8 @@
         weeks: [],
         weekIndex: {},
         focusedYear: new Date().getFullYear(),
-        filters: { status: "", leiter: "", showTenderPreview: true, showMitarbeiter: true },
-        tenderFilters: { status: "", zustaendig: "" },
+        filters: { status: "", leiter: "", tag: "", showTenderPreview: true, showMitarbeiter: true },
+        tenderFilters: { status: "", zustaendig: "", gewerk: "" },
         search: "",
         tenderSort: { key: "submissionDatum", dir: "asc" }
       }
@@ -38,6 +40,7 @@
     listeners: { change: [], saveState: [] },
     backendMode: false,
     currentUser: null,
+    isAdmin: false,
 
     /* ---------------- Lifecycle ---------------- */
 
@@ -52,88 +55,73 @@
 
       if (this.backendMode) {
         this.currentUser = backendData.user || null;
-        if (backendData.projects.length || backendData.tenders.length || backendData.settings) {
-          this.state.projects = backendData.projects;
-          this.state.tenders = backendData.tenders;
-          this.state.settings = Object.assign(Storage.defaultSettings(), backendData.settings || {});
-        } else {
-          // Leere Datenbank -> einmalig mit Beispieldaten befüllen
-          await this._seedBackend();
-        }
+        this.isAdmin = !!backendData.isAdmin;
+        this.state.projects = backendData.projects || [];
+        this.state.tenders = backendData.tenders || [];
+        this.state.employees = backendData.employees || [];
+        this.state.portals = backendData.portals || [];
+        this.state.settings = Object.assign(Storage.defaultSettings(), backendData.settings || {});
       } else {
+        // Kein Backend erreichbar -> lokaler Zwischenspeicher (ohne Demo-/Testdaten).
         const raw = Storage.loadRaw();
         if (raw && Array.isArray(raw.projects) && Array.isArray(raw.tenders)) {
           this.state.projects = raw.projects;
           this.state.tenders = raw.tenders;
+          this.state.employees = raw.employees || [];
+          this.state.portals = raw.portals || [];
           this.state.settings = Object.assign(Storage.defaultSettings(), raw.settings || {});
         } else {
-          const sample = Storage.buildSampleData();
-          this.state.projects = sample.projects;
-          this.state.tenders = sample.tenders;
-          this.state.settings = sample.settings;
+          this.state.projects = [];
+          this.state.tenders = [];
+          this.state.employees = [];
+          this.state.portals = [];
+          this.state.settings = Storage.defaultSettings();
           this._localSaveAllNow();
         }
+        // Ohne Backend gibt es keine serverseitige Admin-Prüfung -> im
+        // lokalen Nur-Browser-Modus alle kritischen Aktionen erlauben.
+        this.isAdmin = true;
       }
 
       this.generateWeeks();
     },
 
-    /** Befüllt eine frisch angelegte, leere Datenbank einmalig mit Beispieldaten. */
-    async _seedBackend() {
-      const sample = Storage.buildSampleData();
-      for (const p of sample.projects) {
-        await Api.createProject(p);
-      }
-      for (const t of sample.tenders) {
-        await Api.createTender(t);
-      }
-      await Api.updateSettings(sample.settings);
-      this.state.projects = sample.projects;
-      this.state.tenders = sample.tenders;
-      this.state.settings = sample.settings;
-    },
-
-    async resetToSampleData() {
-      const sample = Storage.buildSampleData();
-      if (this.backendMode) {
-        this.emit("saveState", "saving");
-        try {
-          for (const p of this.state.projects) await Api.deleteProject(p.id);
-          for (const t of this.state.tenders) await Api.deleteTender(t.id);
-          for (const p of sample.projects) await Api.createProject(p);
-          for (const t of sample.tenders) await Api.createTender(t);
-          await Api.updateSettings(sample.settings);
-          this.emit("saveState", "saved");
-        } catch (err) {
-          this.emit("saveState", "error");
-          Toast.show("Zurücksetzen fehlgeschlagen: " + err.message);
-        }
-      } else {
-        this._localSaveAllNow();
-      }
-      this.state.projects = sample.projects;
-      this.state.tenders = sample.tenders;
-      this.state.settings = sample.settings;
-      this.generateWeeks();
-      if (!this.backendMode) this._localSaveAllNow();
-      this.emit("change");
-    },
-
+    /** Kritische Aktion: alle Projekte & Ausschreibungen löschen (nur Admin). */
     async clearAllData() {
       if (this.backendMode) {
         this.emit("saveState", "saving");
         try {
-          for (const p of this.state.projects) await Api.deleteProject(p.id);
-          for (const t of this.state.tenders) await Api.deleteTender(t.id);
-          await Api.updateSettings(Storage.defaultSettings());
+          await Api.adminReset("clearData");
           this.emit("saveState", "saved");
         } catch (err) {
           this.emit("saveState", "error");
           Toast.show("Löschen fehlgeschlagen: " + err.message);
+          return;
         }
       }
       this.state.projects = [];
       this.state.tenders = [];
+      if (!this.backendMode) this._localSaveAllNow();
+      this.emit("change");
+    },
+
+    /** Kritische Aktion: komplette Datenbank zurücksetzen (nur Admin). Admin-Konfiguration bleibt erhalten. */
+    async resetDatabase() {
+      if (this.backendMode) {
+        this.emit("saveState", "saving");
+        try {
+          await Api.adminReset("fullReset");
+          this.emit("saveState", "saved");
+        } catch (err) {
+          this.emit("saveState", "error");
+          Toast.show("Zurücksetzen fehlgeschlagen: " + err.message);
+          return;
+        }
+      }
+      this.state.projects = [];
+      this.state.tenders = [];
+      this.state.employees = [];
+      this.state.portals = [];
       this.state.settings = Storage.defaultSettings();
       if (!this.backendMode) this._localSaveAllNow();
       this.emit("change");
@@ -168,6 +156,8 @@
       Storage.saveRaw({
         projects: this.state.projects,
         tenders: this.state.tenders,
+        employees: this.state.employees,
+        portals: this.state.portals,
         settings: this.state.settings
       });
     },
@@ -287,6 +277,82 @@
       return this.state.projects.find((x) => x.id === id) || null;
     },
 
+    /* ---------------- Mitarbeiter: CRUD ---------------- */
+
+    addEmployee(data) {
+      const now = new Date().toISOString();
+      const employee = Object.assign({ id: Util.uid("emp"), createdAt: now, updatedAt: now, aktiv: true }, data);
+      this.state.employees.push(employee);
+      this._persist(() => this.backendMode ? Api.createEmployee(employee) : this._localSaveAllDebounced());
+      this.emit("change");
+      return employee;
+    },
+
+    updateEmployee(id, data) {
+      const e = this.state.employees.find((x) => x.id === id);
+      if (!e) return null;
+      Object.assign(e, data, { updatedAt: new Date().toISOString() });
+      this._persist(() => this.backendMode ? Api.updateEmployee(id, e) : this._localSaveAllDebounced());
+      this.emit("change");
+      return e;
+    },
+
+    deleteEmployee(id) {
+      this.state.employees = this.state.employees.filter((x) => x.id !== id);
+      this.state.projects.forEach((p) => {
+        if (Array.isArray(p.employeeIds)) p.employeeIds = p.employeeIds.filter((eid) => eid !== id);
+      });
+      this._persist(() => this.backendMode ? Api.deleteEmployee(id) : this._localSaveAllDebounced());
+      this.emit("change");
+    },
+
+    getEmployee(id) {
+      return this.state.employees.find((x) => x.id === id) || null;
+    },
+
+    getActiveEmployees() {
+      return this.state.employees.filter((e) => e.aktiv === undefined || e.aktiv === true || e.aktiv === 1);
+    },
+
+    /** Namen zu einer Liste von Mitarbeiter-IDs auflösen (für Anzeige/Tooltip). */
+    employeeNames(ids) {
+      return (ids || []).map((id) => {
+        const e = this.getEmployee(id);
+        return e ? (e.vorname + " " + e.nachname).trim() : null;
+      }).filter(Boolean);
+    },
+
+    /* ---------------- Vergabeportale: CRUD ---------------- */
+
+    addPortal(data) {
+      const now = new Date().toISOString();
+      const portal = Object.assign({ id: Util.uid("portal"), createdAt: now, updatedAt: now }, data);
+      this.state.portals.push(portal);
+      this._persist(() => this.backendMode ? Api.createPortal(portal) : this._localSaveAllDebounced());
+      this.emit("change");
+      return portal;
+    },
+
+    updatePortal(id, data) {
+      const p = this.state.portals.find((x) => x.id === id);
+      if (!p) return null;
+      Object.assign(p, data, { updatedAt: new Date().toISOString() });
+      this._persist(() => this.backendMode ? Api.updatePortal(id, p) : this._localSaveAllDebounced());
+      this.emit("change");
+      return p;
+    },
+
+    deletePortal(id) {
+      this.state.portals = this.state.portals.filter((x) => x.id !== id);
+      this.state.tenders.forEach((t) => { if (t.portalId === id) t.portalId = null; });
+      this._persist(() => this.backendMode ? Api.deletePortal(id) : this._localSaveAllDebounced());
+      this.emit("change");
+    },
+
+    getPortal(id) {
+      return this.state.portals.find((x) => x.id === id) || null;
+    },
+
     /* ---------------- Ausschreibungen: CRUD ---------------- */
 
     addTender(data) {
@@ -337,7 +403,8 @@
         status: "Geplant",
         farbe: color,
         bemerkungen: t.bemerkungen || "",
-        notizen: "Aus Ausschreibung übernommen am " + Util.formatDateDE(new Date().toISOString())
+        notizen: "Aus Ausschreibung übernommen am " + Util.formatDateDE(new Date().toISOString()),
+        tags: Array.isArray(t.gewerke) ? t.gewerke.slice() : []
       });
       this.updateTender(id, { angebotsstatus: "Auftrag erhalten", linkedProjectId: project.id });
       return project;
@@ -359,6 +426,7 @@
       return this.state.projects.filter((p) => {
         if (f.status && p.status !== f.status) return false;
         if (f.leiter && p.projektleiter !== f.leiter) return false;
+        if (f.tag && !(Array.isArray(p.tags) && p.tags.includes(f.tag))) return false;
         if (search) {
           const hay = [p.name, p.auftraggeber, p.adresse, p.projektleiter, p.obermonteur, p.bemerkungen]
             .join(" ").toLowerCase();
@@ -379,6 +447,7 @@
       let list = this.state.tenders.filter((t) => {
         if (f.status && t.angebotsstatus !== f.status) return false;
         if (f.zustaendig && t.zustaendigIntern !== f.zustaendig) return false;
+        if (f.gewerk && !(Array.isArray(t.gewerke) && t.gewerke.includes(f.gewerk))) return false;
         if (search) {
           const hay = [t.name, t.auftraggeber, t.ansprechpartner, t.adresse, t.zustaendigIntern, t.bemerkungen]
             .join(" ").toLowerCase();
@@ -388,15 +457,45 @@
       });
       const { key, dir } = this.state.ui.tenderSort;
       list = list.slice().sort((a, b) => {
-        let av = a[key], bv = b[key];
-        if (key === "auftragswert") { av = Number(av) || 0; bv = Number(bv) || 0; }
-        if (av === undefined || av === null) av = "";
-        if (bv === undefined || bv === null) bv = "";
+        let av, bv;
+        if (key === "countdown") {
+          av = this.tenderCountdownDays(a);
+          bv = this.tenderCountdownDays(b);
+          av = av === null ? Infinity : av;
+          bv = bv === null ? Infinity : bv;
+        } else {
+          av = a[key]; bv = b[key];
+          if (key === "auftragswert") { av = Number(av) || 0; bv = Number(bv) || 0; }
+          if (av === undefined || av === null) av = "";
+          if (bv === undefined || bv === null) bv = "";
+        }
         if (av < bv) return dir === "asc" ? -1 : 1;
         if (av > bv) return dir === "asc" ? 1 : -1;
         return 0;
       });
       return list;
+    },
+
+    /* ---------------- Countdown bis Submission ---------------- */
+
+    /** Ganzzahlige Tage bis zur Submission (negativ = überfällig), oder null ohne Datum. */
+    tenderCountdownDays(tender) {
+      if (!tender || !tender.submissionDatum) return null;
+      const sub = new Date(tender.submissionDatum + "T00:00:00");
+      if (isNaN(sub.getTime())) return null;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return Math.round((sub - today) / (24 * 3600 * 1000));
+    },
+
+    /** Einstufung für die farbliche Hervorhebung des Countdowns. */
+    tenderCountdownLevel(tender) {
+      const days = this.tenderCountdownDays(tender);
+      if (days === null) return "none";
+      if (days <= 0) return "critical";
+      if (days <= 6) return "warn";
+      if (days <= 14) return "notice";
+      return "normal";
     },
 
     /** Überschneidung zweier {startYear,startWeek,endYear,endWeek} Zeiträume anhand Wochenindex. */

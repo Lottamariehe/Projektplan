@@ -1,9 +1,11 @@
 /* =========================================================
    PUT    /api/projects/:id – Projekt aktualisieren
-   DELETE /api/projects/:id – Projekt löschen
+          (inkl. Mitarbeiter-Zuordnung und Tags, falls mitgeschickt)
+   DELETE /api/projects/:id – Projekt ENDGÜLTIG löschen
+          (nur Administratoren – kritische Aktion)
    ========================================================= */
 
-import { json, errorResponse, buildUpdate } from "../_utils.js";
+import { json, errorResponse, buildUpdate, requireAdmin } from "../_utils.js";
 
 const UPDATABLE_FIELDS = [
   "name", "auftraggeber", "adresse",
@@ -22,13 +24,30 @@ export async function onRequestPut(context) {
 
   if (!body.updatedAt) body.updatedAt = new Date().toISOString();
   const update = buildUpdate("projects", id, body, UPDATABLE_FIELDS);
-  if (!update) return errorResponse("Keine gültigen Felder zum Aktualisieren übergeben.");
+
+  const statements = [];
+  if (update) statements.push(db.prepare(update.sql).bind(...update.values));
+
+  const hasEmployeeIds = Array.isArray(body.employeeIds);
+  const hasTags = Array.isArray(body.tags);
+
+  if (hasEmployeeIds) {
+    statements.push(db.prepare("DELETE FROM project_employees WHERE projectId = ?").bind(id));
+    body.employeeIds.forEach((empId) => {
+      statements.push(db.prepare("INSERT INTO project_employees (projectId, employeeId) VALUES (?, ?)").bind(id, empId));
+    });
+  }
+  if (hasTags) {
+    statements.push(db.prepare("DELETE FROM project_tags WHERE projectId = ?").bind(id));
+    body.tags.forEach((tag) => {
+      statements.push(db.prepare("INSERT INTO project_tags (projectId, tag) VALUES (?, ?)").bind(id, tag));
+    });
+  }
+
+  if (!statements.length) return errorResponse("Keine gültigen Felder zum Aktualisieren übergeben.");
 
   try {
-    const result = await db.prepare(update.sql).bind(...update.values).run();
-    if (result.meta && result.meta.changes === 0) {
-      return errorResponse("Projekt mit dieser ID wurde nicht gefunden.", 404);
-    }
+    await db.batch(statements);
     return json({ ok: true });
   } catch (err) {
     return errorResponse("Update fehlgeschlagen: " + err.message, 500);
@@ -39,9 +58,17 @@ export async function onRequestDelete(context) {
   const db = context.env.DB;
   if (!db) return errorResponse("D1-Datenbank 'DB' ist nicht gebunden.", 500);
 
+  const forbidden = await requireAdmin(context);
+  if (forbidden) return forbidden;
+
   const id = context.params.id;
   try {
-    await db.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
+    await db.batch([
+      db.prepare("DELETE FROM project_employees WHERE projectId = ?").bind(id),
+      db.prepare("DELETE FROM project_tags WHERE projectId = ?").bind(id),
+      db.prepare("UPDATE tenders SET linkedProjectId = NULL WHERE linkedProjectId = ?").bind(id),
+      db.prepare("DELETE FROM projects WHERE id = ?").bind(id)
+    ]);
     return json({ ok: true });
   } catch (err) {
     return errorResponse("Löschen fehlgeschlagen: " + err.message, 500);

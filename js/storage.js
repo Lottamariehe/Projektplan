@@ -18,6 +18,16 @@
     "Verloren"
   ];
 
+  // Standard-Tags für Projekte (zusätzlich zur Projektfarbe, Mehrfachauswahl).
+  const PROJECT_TAGS = [
+    "Heizung", "Lüftung", "Sanitär", "Wärmepumpe", "Strangsanierung", "Öffentlicher Auftraggeber"
+  ];
+
+  // Standard-Gewerke für Ausschreibungen (Mehrfachauswahl).
+  const TENDER_GEWERKE = [
+    "Heizung", "Sanitär", "Lüftung", "Strangsanierung", "Sonstige"
+  ];
+
   const DEFAULT_COLORS = [
     "#2f6fed", "#2fa876", "#e2a13a", "#9b5de5",
     "#e2543a", "#0ea5b7", "#c2410c", "#4d7c0f",
@@ -251,10 +261,17 @@
     localStorage.removeItem(STORAGE_KEY);
   }
 
+  const EMPLOYEE_FUNKTIONEN = [
+    "Obermonteur", "Monteur", "Servicetechniker", "Isolierer", "Auszubildender", "Leiharbeiter", "Projektleiter"
+  ];
+
   global.Storage = {
     STORAGE_KEY,
     PROJECT_STATUS,
     TENDER_STATUS,
+    PROJECT_TAGS,
+    TENDER_GEWERKE,
+    EMPLOYEE_FUNKTIONEN,
     DEFAULT_COLORS,
     defaultSettings,
     buildSampleData,

@@ -75,10 +75,14 @@ button, input, select, textarea{
 
 .brand{
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  flex-direction: row;
+  gap: 10px;
   line-height: 1.15;
   margin-right: 8px;
 }
+.brand-logo{ height: 32px; width: auto; max-width: 140px; object-fit: contain; }
+.brand-text{ display: flex; flex-direction: column; }
 .brand-title{ font-weight: 700; font-size: 16px; letter-spacing: .2px;}
 .brand-sub{ font-size: 11px; color: var(--color-text-muted); }
 
@@ -656,6 +660,77 @@ main{
   .view{ overflow: visible; padding: 0; }
   .gantt-wrapper{ border: none; }
 }
+
+/* ---------------- Tags / Chips / Countdown ---------------- */
+
+.checkbox-chip-group{ display: flex; flex-wrap: wrap; gap: 8px; }
+.checkbox-chip{
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  background: var(--color-surface);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.checkbox-chip:hover{ background: var(--color-bg); }
+.checkbox-chip input{ margin: 0; }
+.checkbox-chip:has(input:checked){ background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary-dark); }
+
+.mini-tags{ display: inline-flex; gap: 4px; margin-left: 6px; }
+.mini-tag{
+  display: inline-block;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.countdown-badge{
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.countdown-badge.countdown-normal{ background: var(--color-bg); color: var(--color-text-muted); }
+.countdown-badge.countdown-notice{ background: var(--color-primary-soft); color: var(--color-primary-dark); }
+.countdown-badge.countdown-warn{ background: var(--color-warning-soft); color: #8a6416; }
+.countdown-badge.countdown-critical{ background: var(--color-danger-soft); color: #9a3520; }
+.countdown-badge.countdown-none{ background: transparent; color: var(--color-text-faint); }
+
+/* ---------------- Mitarbeiterverwaltung (Inline-Bearbeitung) ---------------- */
+
+.inline-input{
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+.inline-input:hover{ border-color: var(--color-border); }
+.inline-input:focus{ outline: none; border-color: var(--color-primary); background: var(--color-surface); }
+tr.row-inactive{ opacity: 0.5; }
+
+/* ---------------- Kritische Aktionen (Admin) ---------------- */
+
+.btn[disabled]{ opacity: 0.45; cursor: not-allowed; }
+.btn[disabled]:hover{ background: var(--color-surface); border-color: var(--color-border); }
+
+/* ---------------- Import-Assistent ---------------- */
+
+.import-wizard{ width: 820px; max-width: 94vw; }
+.import-preview-scroll{ max-height: 40vh; overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px; }
+.import-sheet-preview{ margin-bottom: 18px; }
+.import-sheet-preview h4{ margin: 0 0 8px; font-size: 13.5px; }
+.import-errors{ background: var(--color-warning-soft); border: 1px solid var(--color-warning); border-radius: var(--radius-sm); padding: 8px 12px; margin-top: 8px; font-size: 12.5px; }
+.import-errors ul{ margin: 4px 0 0; padding-left: 18px; }
 
 /* Scrollbars */
 ::-webkit-scrollbar{ height: 10px; width: 10px; }

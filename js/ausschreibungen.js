@@ -19,8 +19,11 @@
     { key: "auftraggeber", label: "Auftraggeber", sortable: true },
     { key: "ansprechpartner", label: "Ansprechpartner", sortable: true },
     { key: "adresse", label: "Projektadresse", sortable: false },
+    { key: "portal", label: "Portal", sortable: false },
+    { key: "gewerke", label: "Gewerke", sortable: false },
     { key: "submissionDatum", label: "Submission", sortable: true },
     { key: "submissionUhrzeit", label: "Uhrzeit", sortable: false },
+    { key: "countdown", label: "Countdown", sortable: true },
     { key: "zeitraum", label: "Geplanter Ausführungszeitraum", sortable: false },
     { key: "startWeek", label: "Start-KW", sortable: true },
     { key: "endWeek", label: "End-KW", sortable: true },
@@ -80,6 +83,14 @@
     });
   }
 
+  function countdownHtml(t) {
+    const days = App.tenderCountdownDays(t);
+    if (days === null) return `<span style="color:var(--color-text-faint);">–</span>`;
+    const level = App.tenderCountdownLevel(t);
+    const label = days < 0 ? `${Math.abs(days)} Tag(e) überfällig` : days === 0 ? "heute" : `${days} Tag(e)`;
+    return `<span class="countdown-badge countdown-${level}">${label}</span>`;
+  }
+
   function rowHtml(t) {
     const style = STATUS_STYLE[t.angebotsstatus] || { bg: "#eceff3", fg: "#444" };
     const zeitraum = `KW ${t.startWeek}/${t.startYear} – KW ${t.endWeek}/${t.endYear}`;
@@ -89,14 +100,26 @@
           ? `<a href="${Util.escapeHtml(t.unterlagenLink)}" target="_blank" rel="noopener">Öffnen</a>`
           : Util.escapeHtml(t.unterlagenLink))
       : "–";
+    const portal = t.portalId ? App.getPortal(t.portalId) : null;
+    const portalHtml = portal
+      ? (portal.url ? `<a href="${Util.escapeHtml(portal.url)}" target="_blank" rel="noopener">${Util.escapeHtml(portal.name)}</a>` : Util.escapeHtml(portal.name))
+      : `<span style="color:var(--color-text-faint);">–</span>`;
+    const gewerke = Array.isArray(t.gewerke) ? t.gewerke : [];
+    const gewerkeHtml = gewerke.length
+      ? gewerke.map((g) => `<span class="mini-tag">${Util.escapeHtml(g)}</span>`).join("")
+      : `<span style="color:var(--color-text-faint);">–</span>`;
+    const deleteBtn = App.isAdmin ? `<button class="delete" data-del="${t.id}">Löschen</button>` : "";
 
     return `<tr>
       <td>${Util.escapeHtml(t.name)}</td>
       <td>${Util.escapeHtml(t.auftraggeber)}</td>
       <td>${Util.escapeHtml(t.ansprechpartner)}</td>
       <td>${Util.escapeHtml(t.adresse)}</td>
+      <td>${portalHtml}</td>
+      <td>${gewerkeHtml}</td>
       <td>${Util.formatDateDE(t.submissionDatum)}</td>
       <td>${Util.escapeHtml(t.submissionUhrzeit)}</td>
+      <td>${countdownHtml(t)}</td>
       <td>${zeitraum}</td>
       <td>${t.startWeek}/${t.startYear}</td>
       <td>${t.endWeek}/${t.endYear}</td>
@@ -110,7 +133,7 @@
         <div class="row-actions">
           <button data-edit="${t.id}">Bearbeiten</button>
           ${canConvert ? `<button class="convert" data-conv="${t.id}">→ Projekt</button>` : ""}
-          <button class="delete" data-del="${t.id}">Löschen</button>
+          ${deleteBtn}
         </div>
       </td>
     </tr>`;

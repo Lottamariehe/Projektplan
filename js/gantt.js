@@ -109,9 +109,13 @@
   function buildSideRow(row) {
     const item = row.item;
     if (row.kind === "project") {
+      const tags = Array.isArray(item.tags) ? item.tags : [];
+      const tagHtml = tags.length
+        ? `<span class="mini-tags">${tags.slice(0, 3).map((t) => `<span class="mini-tag">${Util.escapeHtml(t)}</span>`).join("")}${tags.length > 3 ? `<span class="mini-tag">+${tags.length - 3}</span>` : ""}</span>`
+        : "";
       return `<div class="gantt-side-row" data-id="${item.id}" data-kind="project">
         <span class="p-name">${Util.escapeHtml(item.name)}</span>
-        <span class="p-meta">${Util.escapeHtml(item.projektleiter || "–")} · ${Util.escapeHtml(item.obermonteur || "–")} · ${item.besetzung || 0} MA</span>
+        <span class="p-meta">${Util.escapeHtml(item.projektleiter || "–")} · ${Util.escapeHtml(item.obermonteur || "–")} · ${(item.employeeIds || []).length || item.besetzung || 0} MA${tagHtml}</span>
       </div>`;
     }
     return `<div class="gantt-side-row" data-id="${item.id}" data-kind="tender">
@@ -174,9 +178,13 @@
   function buildTooltip(row) {
     const item = row.item;
     if (row.kind === "project") {
-      return `${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nProjektleiter: ${item.projektleiter || "–"}\nObermonteur: ${item.obermonteur || "–"}\nBesetzung: ${item.besetzung || 0} Mitarbeitende\nStatus: ${item.status}\nZeitraum: KW ${item.startWeek}/${item.startYear} – KW ${item.endWeek}/${item.endYear}`;
+      const names = App.employeeNames(item.employeeIds);
+      const tagLine = Array.isArray(item.tags) && item.tags.length ? `\nTags: ${item.tags.join(", ")}` : "";
+      const mitarbeiterLine = names.length ? `\nMitarbeiter: ${names.join(", ")}` : "";
+      return `${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nProjektleiter: ${item.projektleiter || "–"}\nObermonteur: ${item.obermonteur || "–"}\nBesetzung: ${item.besetzung || 0} Mitarbeitende\nStatus: ${item.status}\nZeitraum: KW ${item.startWeek}/${item.startYear} – KW ${item.endWeek}/${item.endYear}${tagLine}${mitarbeiterLine}`;
     }
-    return `Ausschreibung: ${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nStatus: ${item.angebotsstatus}\nGeplanter Zeitraum: KW ${item.startWeek}/${item.startYear} – KW ${item.endWeek}/${item.endYear}\nKlicken zum Bearbeiten / Umwandeln.`;
+    const gewerkeLine = Array.isArray(item.gewerke) && item.gewerke.length ? `\nGewerke: ${item.gewerke.join(", ")}` : "";
+    return `Ausschreibung: ${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nStatus: ${item.angebotsstatus}\nGeplanter Zeitraum: KW ${item.startWeek}/${item.startYear} – KW ${item.endWeek}/${item.endYear}${gewerkeLine}\nKlicken zum Bearbeiten / Umwandeln.`;
   }
 
   function openDetails(row) {

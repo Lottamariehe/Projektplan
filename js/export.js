@@ -33,12 +33,13 @@
     const header = [
       "Projektname", "Auftraggeber", "Projektadresse", "Start-KW", "Start-Jahr",
       "End-KW", "End-Jahr", "Projektleiter", "Obermonteur", "Besetzung",
-      "Status", "Bemerkungen", "Notizen"
+      "Status", "Tags", "Mitarbeiter", "Bemerkungen", "Notizen"
     ];
     const rows = App.getVisibleProjects().map((p) => [
       p.name, p.auftraggeber, p.adresse, p.startWeek, p.startYear,
       p.endWeek, p.endYear, p.projektleiter, p.obermonteur, p.besetzung,
-      p.status, p.bemerkungen, p.notizen
+      p.status, (p.tags || []).join(", "), App.employeeNames(p.employeeIds).join(", "),
+      p.bemerkungen, p.notizen
     ]);
     download("projektuebersicht.csv", toCSV([header, ...rows]));
     Toast.show("Projektübersicht als CSV exportiert (in Excel öffnen).");
@@ -47,16 +48,22 @@
   function exportTenders() {
     const header = [
       "Ausschreibung / Bauvorhaben", "Auftraggeber", "Ansprechpartner", "Projektadresse",
-      "Submissionstermin", "Uhrzeit", "Start-KW", "Start-Jahr", "End-KW", "End-Jahr",
+      "Vergabeportal", "Gewerke", "Submissionstermin", "Uhrzeit", "Countdown (Tage)",
+      "Start-KW", "Start-Jahr", "End-KW", "End-Jahr",
       "Angebotsstatus", "Geschätzter Auftragswert", "Zuständig intern", "Bearbeitungsfrist",
       "Bemerkungen", "Unterlagen-Link"
     ];
-    const rows = App.getFilteredTenders().map((t) => [
-      t.name, t.auftraggeber, t.ansprechpartner, t.adresse,
-      t.submissionDatum, t.submissionUhrzeit, t.startWeek, t.startYear, t.endWeek, t.endYear,
-      t.angebotsstatus, t.auftragswert, t.zustaendigIntern, t.bearbeitungsfrist,
-      t.bemerkungen, t.unterlagenLink
-    ]);
+    const rows = App.getFilteredTenders().map((t) => {
+      const portal = t.portalId ? App.getPortal(t.portalId) : null;
+      return [
+        t.name, t.auftraggeber, t.ansprechpartner, t.adresse,
+        portal ? portal.name : "", (t.gewerke || []).join(", "),
+        t.submissionDatum, t.submissionUhrzeit, App.tenderCountdownDays(t),
+        t.startWeek, t.startYear, t.endWeek, t.endYear,
+        t.angebotsstatus, t.auftragswert, t.zustaendigIntern, t.bearbeitungsfrist,
+        t.bemerkungen, t.unterlagenLink
+      ];
+    });
     download("ausschreibungsuebersicht.csv", toCSV([header, ...rows]));
     Toast.show("Ausschreibungsübersicht als CSV exportiert (in Excel öffnen).");
   }

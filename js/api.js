@@ -62,11 +62,59 @@
     }
   }
 
+  /* ---------------- Mitarbeiter ---------------- */
+  function getEmployees() {
+    return request("/employees", { method: "GET" });
+  }
+  function createEmployee(employee) {
+    return request("/employees", { method: "POST", body: JSON.stringify(employee) });
+  }
+  function updateEmployee(id, data) {
+    return request("/employees/" + encodeURIComponent(id), { method: "PUT", body: JSON.stringify(data) });
+  }
+  function deleteEmployee(id) {
+    return request("/employees/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
+  /* ---------------- Vergabeportale ---------------- */
+  function getPortals() {
+    return request("/portals", { method: "GET" });
+  }
+  function createPortal(portal) {
+    return request("/portals", { method: "POST", body: JSON.stringify(portal) });
+  }
+  function updatePortal(id, data) {
+    return request("/portals/" + encodeURIComponent(id), { method: "PUT", body: JSON.stringify(data) });
+  }
+  function deletePortal(id) {
+    return request("/portals/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
+  /* ---------------- Admin ---------------- */
+  function getAdminConfig() {
+    return request("/admin/config", { method: "GET" });
+  }
+  function updateAdminConfig(adminEmails) {
+    return request("/admin/config", { method: "PUT", body: JSON.stringify({ adminEmails }) });
+  }
+  function adminReset(mode) {
+    return request("/admin/reset", { method: "POST", body: JSON.stringify({ mode }) });
+  }
+
+  /* ---------------- Import ---------------- */
+  function runImport(payload) {
+    return request("/import", { method: "POST", body: JSON.stringify(payload) });
+  }
+
   global.Api = {
     bootstrap,
     createProject, updateProject, deleteProject,
     createTender, updateTender, deleteTender,
     updateSettings,
-    currentIdentity
+    currentIdentity,
+    getEmployees, createEmployee, updateEmployee, deleteEmployee,
+    getPortals, createPortal, updatePortal, deletePortal,
+    getAdminConfig, updateAdminConfig, adminReset,
+    runImport
   };
 })(window);

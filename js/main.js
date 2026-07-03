@@ -41,7 +41,9 @@
   function populateFilterOptions() {
     fillSelect(document.getElementById("filterStatus"), Storage.PROJECT_STATUS, App.state.ui.filters.status);
     fillSelect(document.getElementById("filterLeiter"), App.state.settings.projektleiter, App.state.ui.filters.leiter);
+    fillSelect(document.getElementById("filterTag"), Storage.PROJECT_TAGS, App.state.ui.filters.tag);
     fillSelect(document.getElementById("filterAusschreibungStatus"), Storage.TENDER_STATUS, App.state.ui.tenderFilters.status);
+    fillSelect(document.getElementById("filterAusschreibungGewerk"), Storage.TENDER_GEWERKE, App.state.ui.tenderFilters.gewerk);
     const zustList = Array.from(new Set(App.state.tenders.map((t) => t.zustaendigIntern).filter(Boolean)));
     fillSelect(document.getElementById("filterAusschreibungZustaendig"), zustList, App.state.ui.tenderFilters.zustaendig);
   }
@@ -52,6 +54,7 @@
     Capacity.render();
     Ausschreibungen.render();
     if (App.state.ui.view === "settings") renderSettingsView();
+    if (App.state.ui.view === "mitarbeiter") Employees.render();
   }
 
   /* ---------------- Navigation ---------------- */
@@ -61,6 +64,7 @@
     document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
     if (view === "settings") renderSettingsView();
+    if (view === "mitarbeiter") Employees.render();
     if (view === "planner") setTimeout(() => Gantt.render(), 0);
   }
 
@@ -98,6 +102,59 @@
     document.getElementById("colorPalette").innerHTML = (s.colorPalette || []).map((c) =>
       `<div class="color-swatch" style="background:${c};" title="${c}"></div>`
     ).join("");
+
+    renderPortalsCard();
+    renderCriticalActionsCard();
+    renderAdminCard();
+  }
+
+  function renderPortalsCard() {
+    const list = document.getElementById("listPortale");
+    if (!list) return;
+    list.innerHTML = App.state.portals.map((p) =>
+      `<li>${Util.escapeHtml(p.name)}${App.isAdmin ? `<button data-id="${p.id}" aria-label="Entfernen">&times;</button>` : ""}</li>`
+    ).join("") || `<li style="background:none;border:none;color:var(--color-text-faint);">Noch keine Vergabeportale angelegt.</li>`;
+    list.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (confirm("Vergabeportal endgültig löschen?")) {
+          App.deletePortal(btn.dataset.id);
+          renderSettingsView();
+        }
+      });
+    });
+  }
+
+  function renderCriticalActionsCard() {
+    const clearBtn = document.getElementById("btnClearAllData");
+    const resetBtn = document.getElementById("btnResetDatabase");
+    if (clearBtn) { clearBtn.disabled = !App.isAdmin; clearBtn.title = App.isAdmin ? "" : "Nur für Administratoren"; }
+    if (resetBtn) { resetBtn.disabled = !App.isAdmin; resetBtn.title = App.isAdmin ? "" : "Nur für Administratoren"; }
+    const hint = document.getElementById("criticalActionsHint");
+    if (hint) hint.classList.toggle("hidden", App.isAdmin);
+  }
+
+  function renderAdminCard() {
+    const card = document.getElementById("adminCard");
+    if (!card) return;
+    if (!App.isAdmin) { card.classList.add("hidden"); return; }
+    card.classList.remove("hidden");
+    Api.getAdminConfig().then((cfg) => {
+      const list = document.getElementById("listAdminEmails");
+      if (!list) return;
+      list.innerHTML = (cfg.adminEmails || []).map((email, i) =>
+        `<li>${Util.escapeHtml(email)}<button data-i="${i}" aria-label="Entfernen">&times;</button></li>`
+      ).join("");
+      list.querySelectorAll("button").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const emails = (cfg.adminEmails || []).slice();
+          emails.splice(parseInt(btn.dataset.i, 10), 1);
+          if (!emails.length) { Toast.show("Mindestens eine Admin-E-Mail-Adresse ist erforderlich."); return; }
+          await Api.updateAdminConfig(emails);
+          Toast.show("Admin-Liste aktualisiert.");
+          renderAdminCard();
+        });
+      });
+    }).catch(() => {});
   }
 
   function bindSettingsEvents() {
@@ -134,21 +191,51 @@
       Toast.show("Einstellungen gespeichert.");
     });
 
-    document.getElementById("btnResetDemoData").addEventListener("click", () => {
-      if (confirm("Alle aktuellen Daten werden durch die Beispieldaten ersetzt. Fortfahren?")) {
-        App.resetToSampleData();
-        renderSettingsView();
-        Toast.show("Beispieldaten wurden geladen.");
-      }
-    });
-
     document.getElementById("btnClearAllData").addEventListener("click", () => {
+      if (!App.isAdmin) return;
       if (confirm("Wirklich ALLE Projekte und Ausschreibungen unwiderruflich löschen?")) {
         App.clearAllData();
         renderSettingsView();
-        Toast.show("Alle Daten wurden gelöscht.");
+        Toast.show("Alle Projekte und Ausschreibungen wurden gelöscht.");
       }
     });
+
+    document.getElementById("btnResetDatabase").addEventListener("click", () => {
+      if (!App.isAdmin) return;
+      if (confirm("Wirklich die GESAMTE Datenbank zurücksetzen (Projekte, Ausschreibungen, Mitarbeiter, Vergabeportale, Einstellungen)? Admin-E-Mail-Adressen bleiben erhalten. Das kann nicht rückgängig gemacht werden.")) {
+        App.resetDatabase();
+        renderSettingsView();
+        Toast.show("Datenbank wurde zurückgesetzt.");
+      }
+    });
+
+    document.getElementById("btnAddPortal").addEventListener("click", () => {
+      const input = document.getElementById("inputNeuesPortal");
+      const val = input.value.trim();
+      if (!val) return;
+      App.addPortal({ name: val, url: "", hinweis: "" });
+      input.value = "";
+      renderSettingsView();
+      Toast.show("Vergabeportal hinzugefügt.");
+    });
+
+    const importBtn = document.getElementById("btnOpenImport");
+    if (importBtn) importBtn.addEventListener("click", () => ImportWizard.open());
+
+    const addAdminBtn = document.getElementById("btnAddAdminEmail");
+    if (addAdminBtn) {
+      addAdminBtn.addEventListener("click", async () => {
+        const input = document.getElementById("inputNeueAdminEmail");
+        const val = input.value.trim();
+        if (!val) return;
+        const cfg = await Api.getAdminConfig();
+        const emails = (cfg.adminEmails || []).concat([val]);
+        await Api.updateAdminConfig(emails);
+        input.value = "";
+        renderAdminCard();
+        Toast.show("Administrator hinzugefügt.");
+      });
+    }
   }
 
   /* ---------------- Toolbar-Bindings ---------------- */
@@ -185,6 +272,10 @@
       App.state.ui.filters.leiter = e.target.value;
       App.emit("change");
     });
+    document.getElementById("filterTag").addEventListener("change", (e) => {
+      App.state.ui.filters.tag = e.target.value;
+      App.emit("change");
+    });
     document.getElementById("toggleAusschreibungen").addEventListener("change", (e) => {
       App.state.ui.filters.showTenderPreview = e.target.checked;
       App.emit("change");
@@ -203,6 +294,10 @@
     });
     document.getElementById("filterAusschreibungZustaendig").addEventListener("change", (e) => {
       App.state.ui.tenderFilters.zustaendig = e.target.value;
+      App.emit("change");
+    });
+    document.getElementById("filterAusschreibungGewerk").addEventListener("change", (e) => {
+      App.state.ui.tenderFilters.gewerk = e.target.value;
       App.emit("change");
     });
     document.getElementById("btnExportAusschreibungen").addEventListener("click", () => Exporter.exportTenders());
@@ -258,7 +353,7 @@
       if (identity && (identity.email || identity.name)) email = identity.email || identity.name;
     }
     if (email) {
-      label.textContent = "Angemeldet als " + email;
+      label.textContent = "Angemeldet als " + email + (App.isAdmin ? " · Administrator" : "");
       label.classList.remove("hidden");
     }
   }
@@ -284,6 +379,7 @@
     bindToolbar();
     bindSettingsEvents();
     bindScrollSync();
+    Employees.bindToolbar();
 
     document.getElementById("yearLabel").textContent = new Date().getFullYear();
 

@@ -11,12 +11,16 @@
 
   <header class="topbar">
     <div class="brand">
-      <span class="brand-title">Baustellenplaner</span>
-      <span class="brand-sub">SHK-Projekt- &amp; Ausschreibungsplanung</span>
+      <img src="public/logo.png" alt="Firmenlogo" class="brand-logo" id="brandLogo" onerror="this.classList.add('hidden')">
+      <div class="brand-text">
+        <span class="brand-title">Baustellenplaner</span>
+        <span class="brand-sub">SHK-Projekt- &amp; Ausschreibungsplanung</span>
+      </div>
     </div>
     <nav class="main-nav" id="mainNav">
       <button class="nav-btn active" data-view="planner">Projektplaner</button>
       <button class="nav-btn" data-view="ausschreibungen">Ausschreibungen</button>
+      <button class="nav-btn" data-view="mitarbeiter">Mitarbeiter</button>
       <button class="nav-btn" data-view="settings">Einstellungen</button>
     </nav>
     <div class="topbar-actions">
@@ -55,6 +59,9 @@
           </select>
           <select id="filterLeiter" class="select-input">
             <option value="">Alle Projektleiter</option>
+          </select>
+          <select id="filterTag" class="select-input">
+            <option value="">Alle Tags</option>
           </select>
           <label class="checkbox-label">
             <input type="checkbox" id="toggleAusschreibungen" checked>
@@ -113,6 +120,9 @@
           <select id="filterAusschreibungZustaendig" class="select-input">
             <option value="">Alle zuständigen Personen</option>
           </select>
+          <select id="filterAusschreibungGewerk" class="select-input">
+            <option value="">Alle Gewerke</option>
+          </select>
         </div>
         <div class="toolbar-group">
           <button class="btn btn-ghost" id="btnExportAusschreibungen">Export</button>
@@ -126,6 +136,31 @@
           <tbody id="ausschreibungenBody"></tbody>
         </table>
       </div>
+    </section>
+
+    <!-- ================= MITARBEITER ================= -->
+    <section id="view-mitarbeiter" class="view">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="btn btn-primary" id="btnNewEmployee">+ Neuer Mitarbeiter</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table id="employeesTable" class="data-table" style="min-width:0;">
+          <thead>
+            <tr>
+              <th>Vorname</th>
+              <th>Nachname</th>
+              <th>Funktion/Rolle</th>
+              <th>Aktiv</th>
+              <th>Bemerkungen</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="employeesBody"></tbody>
+        </table>
+      </div>
+      <datalist id="dlFunktion"></datalist>
     </section>
 
     <!-- ================= EINSTELLUNGEN ================= -->
@@ -177,10 +212,37 @@
         </div>
 
         <div class="settings-card">
-          <h3>Daten</h3>
-          <p class="settings-hint">Alle Daten werden lokal im Browser gespeichert (Local Storage).</p>
-          <button class="btn btn-ghost" id="btnResetDemoData">Beispieldaten zurücksetzen</button>
-          <button class="btn btn-ghost danger" id="btnClearAllData">Alle Daten löschen</button>
+          <h3>Vergabeportale</h3>
+          <p class="settings-hint">Stehen bei Ausschreibungen zur Auswahl. Enthält bewusst keine Zugangsdaten/Passwörter.</p>
+          <ul class="tag-list" id="listPortale"></ul>
+          <div class="add-row">
+            <input type="text" id="inputNeuesPortal" placeholder="Portalname hinzufügen">
+            <button class="btn btn-ghost" id="btnAddPortal">Hinzufügen</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Daten importieren</h3>
+          <p class="settings-hint">Excel-Datei mit Projekten, Ausschreibungen, Mitarbeitern und/oder Vergabeportalen einlesen – auch für wiederkehrende Aktualisierungen.</p>
+          <button class="btn btn-primary" id="btnOpenImport">Import-Assistent öffnen</button>
+        </div>
+
+        <div class="settings-card">
+          <h3>Kritische Aktionen</h3>
+          <p class="settings-hint">Endgültige Lösch-/Reset-Aktionen sind Administratoren vorbehalten.</p>
+          <p class="settings-hint hidden" id="criticalActionsHint" style="color:var(--color-danger);">Diese Aktionen sind für deinen Account gesperrt (kein Administrator).</p>
+          <button class="btn btn-ghost danger" id="btnClearAllData">Alle Projekte &amp; Ausschreibungen löschen</button>
+          <button class="btn btn-ghost danger" id="btnResetDatabase" style="margin-top:8px;">Datenbank vollständig zurücksetzen</button>
+        </div>
+
+        <div class="settings-card hidden" id="adminCard">
+          <h3>Administratoren</h3>
+          <p class="settings-hint">E-Mail-Adressen, die kritische Aktionen ausführen dürfen (anhand der Cloudflare-Access-Anmeldung erkannt).</p>
+          <ul class="tag-list" id="listAdminEmails"></ul>
+          <div class="add-row">
+            <input type="text" id="inputNeueAdminEmail" placeholder="name@firma.de">
+            <button class="btn btn-ghost" id="btnAddAdminEmail">Hinzufügen</button>
+          </div>
         </div>
 
       </div>
@@ -195,6 +257,7 @@
   <div class="loading-box">Projektdaten werden geladen …</div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/util.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/api.js"></script>
@@ -202,7 +265,9 @@
 <script src="js/gantt.js"></script>
 <script src="js/capacity.js"></script>
 <script src="js/ausschreibungen.js"></script>
+<script src="js/employees.js"></script>
 <script src="js/modals.js"></script>
+<script src="js/importwizard.js"></script>
 <script src="js/export.js"></script>
 <script src="js/main.js"></script>
 </body>

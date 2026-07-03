@@ -46,6 +46,24 @@
     return values.map((v) => `<option value="${Util.escapeHtml(v)}" ${v === selected ? "selected" : ""}>${Util.escapeHtml(v)}</option>`).join("");
   }
 
+  /** Baut eine Reihe von Checkboxen (für Tags/Gewerke/Mitarbeiter-Mehrfachauswahl). */
+  function checkboxGroup(name, options, selectedValues, escapeLabel) {
+    const selected = new Set(selectedValues || []);
+    return options.map((opt) => {
+      const value = typeof opt === "object" ? opt.value : opt;
+      const label = typeof opt === "object" ? opt.label : opt;
+      const safeLabel = escapeLabel === false ? label : Util.escapeHtml(label);
+      return `<label class="checkbox-chip">
+        <input type="checkbox" name="${name}" value="${Util.escapeHtml(value)}" ${selected.has(value) ? "checked" : ""}>
+        <span>${safeLabel}</span>
+      </label>`;
+    }).join("");
+  }
+
+  function readCheckboxGroup(name) {
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
+  }
+
   /* ==================== PROJEKT ==================== */
 
   function openProjectModal(id) {
@@ -58,10 +76,14 @@
       endWeek: (App.state.ui.weeks.find((w) => w.isToday)?.week || 1) + 1,
       projektleiter: "", obermonteur: "", besetzung: 2,
       status: "Geplant", farbe: (App.state.settings.colorPalette || Storage.DEFAULT_COLORS)[0],
-      bemerkungen: "", notizen: ""
+      bemerkungen: "", notizen: "", tags: [], employeeIds: []
     };
 
     const palette = App.state.settings.colorPalette || Storage.DEFAULT_COLORS;
+    const employeeOptions = App.getActiveEmployees()
+      .slice()
+      .sort((a, b) => (a.nachname || "").localeCompare(b.nachname || ""))
+      .map((e) => ({ value: e.id, label: (e.vorname + " " + e.nachname).trim() + (e.funktion ? " · " + e.funktion : "") }));
 
     const html = `
       <div class="modal-header">
@@ -128,6 +150,18 @@
         </div>
 
         <div class="form-row span-2">
+          <label>Tags</label>
+          <div class="checkbox-chip-group">${checkboxGroup("fTags", Storage.PROJECT_TAGS, p.tags)}</div>
+        </div>
+
+        <div class="form-row span-2">
+          <label>Zugeordnete Mitarbeiter</label>
+          <div class="checkbox-chip-group">
+            ${employeeOptions.length ? checkboxGroup("fEmployees", employeeOptions, p.employeeIds) : `<span class="settings-hint" style="margin:0;">Noch keine aktiven Mitarbeiter angelegt (Einstellungen → Mitarbeiter).</span>`}
+          </div>
+        </div>
+
+        <div class="form-row span-2">
           <label>Bemerkungen</label>
           <textarea id="fBemerkungen" rows="2">${Util.escapeHtml(p.bemerkungen)}</textarea>
         </div>
@@ -139,7 +173,8 @@
       </div>
       <div class="modal-footer">
         <div class="left">
-          ${editing ? `<button class="btn btn-ghost danger" id="mDelete">Projekt löschen</button>` : "<span></span>"}
+          ${editing && App.isAdmin ? `<button class="btn btn-ghost danger" id="mDelete">Projekt endgültig löschen</button>` : ""}
+          ${editing && !App.isAdmin ? `<span class="settings-hint" style="margin:0;">Endgültiges Löschen ist Administratoren vorbehalten.</span>` : ""}
         </div>
         <div class="right">
           <button class="btn btn-ghost" id="mCancel">Abbrechen</button>
@@ -175,9 +210,9 @@
       });
     });
 
-    if (editing) {
+    if (editing && App.isAdmin) {
       document.getElementById("mDelete").addEventListener("click", () => {
-        if (confirm(`Projekt „${p.name}“ wirklich löschen?`)) {
+        if (confirm(`Projekt „${p.name}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.`)) {
           App.deleteProject(id);
           Toast.show("Projekt gelöscht.");
           close();
@@ -200,7 +235,9 @@
         status: document.getElementById("fStatus").value,
         farbe: document.getElementById("fFarbe").value,
         bemerkungen: document.getElementById("fBemerkungen").value.trim(),
-        notizen: document.getElementById("fNotizen").value.trim()
+        notizen: document.getElementById("fNotizen").value.trim(),
+        tags: readCheckboxGroup("fTags"),
+        employeeIds: readCheckboxGroup("fEmployees")
       };
 
       const err = validateRange(data);
@@ -246,10 +283,19 @@
       endYear: App.state.ui.weeks.find((w) => w.isToday)?.year || new Date().getFullYear(),
       endWeek: (App.state.ui.weeks.find((w) => w.isToday)?.week || 1) + 1,
       angebotsstatus: "In Bearbeitung", auftragswert: "", zustaendigIntern: "",
-      bearbeitungsfrist: "", bemerkungen: "", unterlagenLink: ""
+      bearbeitungsfrist: "", bemerkungen: "", unterlagenLink: "", gewerke: [], portalId: ""
     };
 
     const people = Array.from(new Set([...(App.state.settings.projektleiter || []), ...(App.state.settings.obermonteure || [])]));
+    const portalOptions = [{ value: "", label: "– kein Portal ausgewählt –" }].concat(
+      App.state.portals.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: p.id, label: p.name }))
+    );
+    const countdownDays = editing ? App.tenderCountdownDays(t) : null;
+    const countdownLevel = editing ? App.tenderCountdownLevel(t) : "none";
+    const countdownText = countdownDays === null ? ""
+      : countdownDays < 0 ? `${Math.abs(countdownDays)} Tag(e) überfällig`
+      : countdownDays === 0 ? "Submission ist heute"
+      : `noch ${countdownDays} Tag(e) bis Submission`;
 
     const html = `
       <div class="modal-header">
@@ -277,10 +323,20 @@
         <div class="form-row">
           <label>Submissionstermin</label>
           <input type="date" id="fSubmissionDatum" value="${t.submissionDatum || ""}">
+          ${countdownText ? `<div class="countdown-badge countdown-${countdownLevel}">${countdownText}</div>` : ""}
         </div>
         <div class="form-row">
           <label>Uhrzeit der Submission</label>
           <input type="time" id="fSubmissionUhrzeit" value="${t.submissionUhrzeit || ""}">
+        </div>
+
+        <div class="form-row">
+          <label>Ausschreibungs-Portal</label>
+          <select id="fPortal">${portalOptions.map((o) => `<option value="${Util.escapeHtml(o.value)}" ${o.value === (t.portalId || "") ? "selected" : ""}>${Util.escapeHtml(o.label)}</option>`).join("")}</select>
+        </div>
+        <div class="form-row">
+          <label>Gewerke</label>
+          <div class="checkbox-chip-group">${checkboxGroup("fGewerke", Storage.TENDER_GEWERKE, t.gewerke)}</div>
         </div>
 
         <div class="form-row">
@@ -330,8 +386,9 @@
         <div class="field-error span-2" id="fError" style="display:none;"></div>
       </div>
       <div class="modal-footer">
-        <div class="left" style="display:flex; gap:8px;">
-          ${editing ? `<button class="btn btn-ghost danger" id="mDelete">Löschen</button>` : "<span></span>"}
+        <div class="left" style="display:flex; gap:8px; align-items:center;">
+          ${editing && App.isAdmin ? `<button class="btn btn-ghost danger" id="mDelete">Endgültig löschen</button>` : ""}
+          ${editing && !App.isAdmin ? `<span class="settings-hint" style="margin:0;">Endgültiges Löschen ist Administratoren vorbehalten.</span>` : ""}
           ${editing && t.angebotsstatus === "Auftrag erhalten" && !t.linkedProjectId ? `<button class="btn btn-ghost" id="mConvert" style="color:var(--color-success); border-color:var(--color-success);">In Projekt umwandeln</button>` : ""}
         </div>
         <div class="right">
@@ -360,14 +417,16 @@
       });
     });
 
-    if (editing) {
+    if (editing && App.isAdmin) {
       document.getElementById("mDelete").addEventListener("click", () => {
-        if (confirm(`Ausschreibung „${t.name}“ wirklich löschen?`)) {
+        if (confirm(`Ausschreibung „${t.name}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.`)) {
           App.deleteTender(id);
           Toast.show("Ausschreibung gelöscht.");
           close();
         }
       });
+    }
+    if (editing) {
       const convertBtn = document.getElementById("mConvert");
       if (convertBtn) {
         convertBtn.addEventListener("click", () => {
@@ -395,7 +454,9 @@
         zustaendigIntern: document.getElementById("fZustaendig").value.trim(),
         bearbeitungsfrist: document.getElementById("fFrist").value,
         unterlagenLink: document.getElementById("fLink").value.trim(),
-        bemerkungen: document.getElementById("fBemerkungen").value.trim()
+        bemerkungen: document.getElementById("fBemerkungen").value.trim(),
+        portalId: document.getElementById("fPortal").value || null,
+        gewerke: readCheckboxGroup("fGewerke")
       };
 
       if (!data.name) { showError("Bitte einen Namen für die Ausschreibung angeben."); return; }
