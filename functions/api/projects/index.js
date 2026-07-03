@@ -3,8 +3,11 @@
    Die ID wird im Frontend erzeugt (Util.uid) und mitgeschickt,
    damit die Gantt-Ansicht sofort ohne Rückfrage rendern kann.
 
-   body.employeeIds: string[]  – zugeordnete Mitarbeiter (optional)
-   body.tags:        string[]  – Projekt-Tags (optional)
+   body.employeeIds:     string[] – zugeordnete Mitarbeiter (optional)
+   body.tags:            string[] – Projekt-Tags (optional)
+   body.employeeRanges:  { [employeeId]: {startYear,startWeek,endYear,endWeek} }
+                          – optionaler individueller Zeitraum je Mitarbeiter
+                          innerhalb der Projektlaufzeit (Personaleinsatzplanung).
    ========================================================= */
 
 import { json, errorResponse } from "../_utils.js";
@@ -26,6 +29,7 @@ export async function onRequestPost(context) {
   const now = new Date().toISOString();
   const employeeIds = Array.isArray(body.employeeIds) ? body.employeeIds : [];
   const tags = Array.isArray(body.tags) ? body.tags : [];
+  const employeeRanges = body.employeeRanges && typeof body.employeeRanges === "object" ? body.employeeRanges : {};
 
   try {
     const statements = [
@@ -56,8 +60,11 @@ export async function onRequestPost(context) {
     ];
 
     employeeIds.forEach((empId) => {
+      const r = employeeRanges[empId] || {};
       statements.push(
-        db.prepare("INSERT INTO project_employees (projectId, employeeId) VALUES (?, ?)").bind(body.id, empId)
+        db.prepare(
+          "INSERT INTO project_employees (projectId, employeeId, startYear, startWeek, endYear, endWeek) VALUES (?,?,?,?,?,?)"
+        ).bind(body.id, empId, r.startYear || null, r.startWeek || null, r.endYear || null, r.endWeek || null)
       );
     });
     tags.forEach((tag) => {

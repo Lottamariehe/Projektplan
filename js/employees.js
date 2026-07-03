@@ -13,11 +13,18 @@
 
     const dl = document.getElementById("dlFunktion");
     if (dl) dl.innerHTML = Storage.EMPLOYEE_FUNKTIONEN.map((f) => `<option value="${Util.escapeHtml(f)}">`).join("");
+    const dlBesch = document.getElementById("dlBeschaeftigung");
+    if (dlBesch) dlBesch.innerHTML = Storage.EMPLOYEE_BESCHAEFTIGUNG.map((f) => `<option value="${Util.escapeHtml(f)}">`).join("");
+    const dlTeam = document.getElementById("dlTeam");
+    if (dlTeam) {
+      const teams = Array.from(new Set(App.state.employees.map((e) => e.team).filter(Boolean)));
+      dlTeam.innerHTML = teams.map((t) => `<option value="${Util.escapeHtml(t)}">`).join("");
+    }
 
     const list = App.state.employees.slice().sort((a, b) => (a.nachname || "").localeCompare(b.nachname || ""));
 
     if (!list.length) {
-      body.innerHTML = `<tr><td colspan="6" style="color:var(--color-text-faint); text-align:center; padding:30px;">Noch keine Mitarbeiter angelegt.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="9" style="color:var(--color-text-faint); text-align:center; padding:30px;">Noch keine Mitarbeiter angelegt.</td></tr>`;
       return;
     }
 
@@ -30,6 +37,10 @@
       row.querySelector(".e-vorname").addEventListener("change", (ev) => App.updateEmployee(e.id, { vorname: ev.target.value.trim() }));
       row.querySelector(".e-nachname").addEventListener("change", (ev) => App.updateEmployee(e.id, { nachname: ev.target.value.trim() }));
       row.querySelector(".e-funktion").addEventListener("change", (ev) => App.updateEmployee(e.id, { funktion: ev.target.value.trim() }));
+      row.querySelector(".e-team").addEventListener("change", (ev) => App.updateEmployee(e.id, { team: ev.target.value.trim() }));
+      row.querySelector(".e-qualifikation").addEventListener("change", (ev) => App.updateEmployee(e.id, { qualifikation: ev.target.value.trim() }));
+      row.querySelector(".e-wochenstunden").addEventListener("change", (ev) => App.updateEmployee(e.id, { wochenarbeitszeit: ev.target.value ? Number(ev.target.value) : null }));
+      row.querySelector(".e-beschaeftigung").addEventListener("change", (ev) => App.updateEmployee(e.id, { beschaeftigungsstatus: ev.target.value.trim() }));
       row.querySelector(".e-bemerkungen").addEventListener("change", (ev) => App.updateEmployee(e.id, { bemerkungen: ev.target.value.trim() }));
       row.querySelector(".e-aktiv").addEventListener("change", (ev) => {
         App.updateEmployee(e.id, { aktiv: ev.target.checked });
@@ -49,7 +60,6 @@
   }
 
   function rowHtml(e) {
-    const fullName = (e.vorname + " " + e.nachname).trim();
     const isActive = e.aktiv === undefined || e.aktiv === true || e.aktiv === 1;
     const deleteBtn = App.isAdmin
       ? `<button class="e-delete" title="Endgültig löschen">Löschen</button>`
@@ -58,6 +68,10 @@
       <td><input type="text" class="inline-input e-vorname" value="${Util.escapeHtml(e.vorname)}" placeholder="Vorname"></td>
       <td><input type="text" class="inline-input e-nachname" value="${Util.escapeHtml(e.nachname)}" placeholder="Nachname"></td>
       <td><input type="text" class="inline-input e-funktion" list="dlFunktion" value="${Util.escapeHtml(e.funktion)}" placeholder="Funktion/Rolle"></td>
+      <td><input type="text" class="inline-input e-team" list="dlTeam" value="${Util.escapeHtml(e.team)}" placeholder="Team"></td>
+      <td><input type="text" class="inline-input e-qualifikation" value="${Util.escapeHtml(e.qualifikation)}" placeholder="Qualifikation"></td>
+      <td><input type="number" class="inline-input e-wochenstunden" min="0" step="0.5" value="${e.wochenarbeitszeit || ""}" placeholder="Std."></td>
+      <td><input type="text" class="inline-input e-beschaeftigung" list="dlBeschaeftigung" value="${Util.escapeHtml(e.beschaeftigungsstatus)}" placeholder="Status"></td>
       <td style="text-align:center;"><input type="checkbox" class="e-aktiv" ${isActive ? "checked" : ""} title="Aktiv"></td>
       <td><input type="text" class="inline-input e-bemerkungen" value="${Util.escapeHtml(e.bemerkungen)}" placeholder="Bemerkungen"></td>
       <td>${deleteBtn}</td>

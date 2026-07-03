@@ -27,7 +27,10 @@ const TENDER_FIELDS = [
   "startYear", "startWeek", "endYear", "endWeek", "angebotsstatus", "auftragswert", "zustaendigIntern",
   "bearbeitungsfrist", "bemerkungen", "unterlagenLink", "linkedProjectId", "portalId"
 ];
-const EMPLOYEE_FIELDS = ["id", "vorname", "nachname", "funktion", "aktiv", "bemerkungen"];
+const EMPLOYEE_FIELDS = [
+  "id", "vorname", "nachname", "funktion", "team", "qualifikation",
+  "wochenarbeitszeit", "beschaeftigungsstatus", "sortOrder", "aktiv", "bemerkungen"
+];
 const PORTAL_FIELDS = ["id", "name", "url", "hinweis"];
 
 async function existingIds(db, table) {
@@ -105,7 +108,7 @@ export async function onRequestPost(context) {
     employees.forEach((e) => {
       if (!e || !e.id) { summary.employees.skipped++; return; }
       if (mode === "add" && existingEmployeeIds.has(e.id)) { summary.employees.skipped++; return; }
-      const row = Object.assign({}, e, { aktiv: e.aktiv === false || e.aktiv === 0 ? 0 : 1 });
+      const row = Object.assign({ sortOrder: 0 }, e, { aktiv: e.aktiv === false || e.aktiv === 0 ? 0 : 1 });
       const { sql, values } = buildInsertOrReplace("employees", EMPLOYEE_FIELDS, row, now);
       statements.push(db.prepare(sql).bind(...values));
       summary.employees[existingEmployeeIds.has(e.id) ? "updated" : "created"]++;
@@ -123,8 +126,14 @@ export async function onRequestPost(context) {
 
       if (Array.isArray(p.employeeIds)) {
         statements.push(db.prepare("DELETE FROM project_employees WHERE projectId = ?").bind(p.id));
+        const ranges = p.employeeRanges && typeof p.employeeRanges === "object" ? p.employeeRanges : {};
         p.employeeIds.forEach((empId) => {
-          statements.push(db.prepare("INSERT INTO project_employees (projectId, employeeId) VALUES (?, ?)").bind(p.id, empId));
+          const r = ranges[empId] || {};
+          statements.push(
+            db.prepare(
+              "INSERT INTO project_employees (projectId, employeeId, startYear, startWeek, endYear, endWeek) VALUES (?,?,?,?,?,?)"
+            ).bind(p.id, empId, r.startYear || null, r.startWeek || null, r.endYear || null, r.endWeek || null)
+          );
         });
       }
       if (Array.isArray(p.tags)) {

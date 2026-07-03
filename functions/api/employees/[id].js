@@ -7,7 +7,10 @@
 
 import { json, errorResponse, buildUpdate, requireAdmin } from "../_utils.js";
 
-const UPDATABLE_FIELDS = ["vorname", "nachname", "funktion", "aktiv", "bemerkungen", "updatedAt"];
+const UPDATABLE_FIELDS = [
+  "vorname", "nachname", "funktion", "team", "qualifikation", "wochenarbeitszeit",
+  "beschaeftigungsstatus", "sortOrder", "aktiv", "bemerkungen", "updatedAt"
+];
 
 export async function onRequestPut(context) {
   const db = context.env.DB;

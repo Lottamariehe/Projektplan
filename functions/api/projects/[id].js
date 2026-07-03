@@ -30,11 +30,17 @@ export async function onRequestPut(context) {
 
   const hasEmployeeIds = Array.isArray(body.employeeIds);
   const hasTags = Array.isArray(body.tags);
+  const employeeRanges = body.employeeRanges && typeof body.employeeRanges === "object" ? body.employeeRanges : {};
 
   if (hasEmployeeIds) {
     statements.push(db.prepare("DELETE FROM project_employees WHERE projectId = ?").bind(id));
     body.employeeIds.forEach((empId) => {
-      statements.push(db.prepare("INSERT INTO project_employees (projectId, employeeId) VALUES (?, ?)").bind(id, empId));
+      const r = employeeRanges[empId] || {};
+      statements.push(
+        db.prepare(
+          "INSERT INTO project_employees (projectId, employeeId, startYear, startWeek, endYear, endWeek) VALUES (?,?,?,?,?,?)"
+        ).bind(id, empId, r.startYear || null, r.startWeek || null, r.endYear || null, r.endWeek || null)
+      );
     });
   }
   if (hasTags) {

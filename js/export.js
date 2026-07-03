@@ -68,5 +68,46 @@
     Toast.show("Ausschreibungsübersicht als CSV exportiert (in Excel öffnen).");
   }
 
-  global.Exporter = { exportProjects, exportTenders };
+  /** Echter Excel-Export (.xlsx) der Personaleinsatzplanung – nutzt die
+   *  ohnehin für den Import-Assistenten geladene SheetJS-Bibliothek. Exportiert
+   *  wird genau das, was gerade (unter Berücksichtigung der Filter) sichtbar ist. */
+  function exportPersonalXlsx() {
+    if (typeof XLSX === "undefined") {
+      Toast.show("Excel-Export nicht verfügbar (Bibliothek konnte nicht geladen werden).");
+      return;
+    }
+    const header = [
+      "Mitarbeiter", "Funktion", "Team", "Projekt", "Projektleiter", "Auftraggeber",
+      "Status", "Start-KW", "Start-Jahr", "End-KW", "End-Jahr",
+      "Individueller Zeitraum", "Terminüberschneidung"
+    ];
+    const rows = [header];
+
+    App.getVisiblePersonalEmployees().forEach(({ employee, assignments }) => {
+      const name = (employee.vorname + " " + employee.nachname).trim();
+      if (!assignments.length) {
+        rows.push([name, employee.funktion || "", employee.team || "", "", "", "", "", "", "", "", "", "", ""]);
+        return;
+      }
+      const withConflicts = App.computeAssignmentConflicts(assignments);
+      withConflicts.forEach((a) => {
+        rows.push([
+          name, employee.funktion || "", employee.team || "",
+          a.project.name, a.project.projektleiter || "", a.project.auftraggeber || "", a.project.status,
+          a.span.startWeek, a.span.startYear, a.span.endWeek, a.span.endYear,
+          a.hasOverride ? "Ja" : "Nein",
+          a.conflicts.length ? "Ja" : "Nein"
+        ]);
+      });
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = header.map(() => ({ wch: 16 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Personaleinsatzplanung");
+    XLSX.writeFile(wb, "personaleinsatzplanung.xlsx");
+    Toast.show("Personaleinsatzplanung als Excel-Datei (.xlsx) exportiert.");
+  }
+
+  global.Exporter = { exportProjects, exportTenders, exportPersonalXlsx };
 })(window);

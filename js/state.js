@@ -34,7 +34,15 @@
         filters: { status: "", leiter: "", tag: "", showTenderPreview: true, showMitarbeiter: true },
         tenderFilters: { status: "", zustaendig: "", gewerk: "" },
         search: "",
-        tenderSort: { key: "submissionDatum", dir: "asc" }
+        tenderSort: { key: "submissionDatum", dir: "asc" },
+        personal: {
+          sort: "alpha",
+          showDetails: false,
+          search: "",
+          filters: { projekt: "", leiter: "", ober: "", tag: "", status: "", funktion: "", mitarbeiter: "" },
+          highlightProjectId: null,
+          highlightEmployeeId: null
+        }
       }
     },
     listeners: { change: [], saveState: [] },
@@ -249,9 +257,28 @@
 
     /* ---------------- Projekte: CRUD ---------------- */
 
+    /** Baut aus employeeIds + employeeRanges das lokale employeeAssignments-Feld
+     *  (Spiegelbild dessen, was der Server aus project_employees zurückliefert),
+     *  damit Änderungen sofort sichtbar sind, ohne auf einen Reload zu warten. */
+    _rebuildEmployeeAssignments(project, data) {
+      if (!Array.isArray(data.employeeIds)) return;
+      const ranges = data.employeeRanges && typeof data.employeeRanges === "object" ? data.employeeRanges : {};
+      project.employeeAssignments = data.employeeIds.map((empId) => {
+        const r = ranges[empId];
+        return {
+          employeeId: empId,
+          startYear: (r && r.startYear) || null,
+          startWeek: (r && r.startWeek) || null,
+          endYear: (r && r.endYear) || null,
+          endWeek: (r && r.endWeek) || null
+        };
+      });
+    },
+
     addProject(data) {
       const now = new Date().toISOString();
       const project = Object.assign({ id: Util.uid("proj"), createdAt: now, updatedAt: now }, data);
+      this._rebuildEmployeeAssignments(project, data);
       this.state.projects.push(project);
       this._persist(() => this.backendMode ? Api.createProject(project) : this._localSaveAllDebounced());
       this.emit("change");
@@ -262,6 +289,7 @@
       const p = this.state.projects.find((x) => x.id === id);
       if (!p) return null;
       Object.assign(p, data, { updatedAt: new Date().toISOString() });
+      this._rebuildEmployeeAssignments(p, data);
       this._persist(() => this.backendMode ? Api.updateProject(id, p) : this._localSaveAllDebounced());
       this.emit("change");
       return p;
@@ -320,6 +348,16 @@
         const e = this.getEmployee(id);
         return e ? (e.vorname + " " + e.nachname).trim() : null;
       }).filter(Boolean);
+    },
+
+    /** Persistiert eine neue manuelle Reihenfolge (Drag-and-drop in der Personaleinsatzplanung). */
+    reorderEmployees(orderedIds) {
+      orderedIds.forEach((id, i) => {
+        const e = this.getEmployee(id);
+        if (e) e.sortOrder = i;
+      });
+      this._persist(() => this.backendMode ? Api.reorderEmployees(orderedIds) : this._localSaveAllDebounced());
+      this.emit("change");
     },
 
     /* ---------------- Vergabeportale: CRUD ---------------- */
@@ -507,6 +545,139 @@
 
     tenderOverlapsAnyProject(tender) {
       return this.state.projects.some((p) => p.status !== "Storniert" && this.rangesOverlap(p, tender));
+    },
+
+    /* ---------------- Personaleinsatzplanung ---------------- */
+    /* Alle Daten hier werden ausschließlich aus projects + project_employees
+       abgeleitet -- es gibt keine doppelte Datenhaltung. Ein verschobenes/
+       verlängertes Projekt im Projektplaner wirkt sich automatisch auf diese
+       Ansicht aus (und umgekehrt), weil beide Ansichten dieselben Objekte lesen. */
+
+    /** Effektiver Zeitraum eines Mitarbeiters innerhalb eines Projekts:
+     *  der individuelle Zeitraum (falls hinterlegt), sonst die gesamte Projektlaufzeit. */
+    getEmployeeAssignmentSpan(project, employeeId) {
+      const list = Array.isArray(project.employeeAssignments) ? project.employeeAssignments : [];
+      const a = list.find((x) => x.employeeId === employeeId);
+      if (a && a.startYear && a.startWeek && a.endYear && a.endWeek) {
+        return { startYear: a.startYear, startWeek: a.startWeek, endYear: a.endYear, endWeek: a.endWeek };
+      }
+      return { startYear: project.startYear, startWeek: project.startWeek, endYear: project.endYear, endWeek: project.endWeek };
+    },
+
+    /** Individuellen Zeitraum eines Mitarbeiters in einem Projekt lesen (roh, ohne Fallback). */
+    getEmployeeRangeOverride(project, employeeId) {
+      const list = Array.isArray(project.employeeAssignments) ? project.employeeAssignments : [];
+      const a = list.find((x) => x.employeeId === employeeId);
+      if (a && a.startYear && a.startWeek && a.endYear && a.endWeek) {
+        return { startYear: a.startYear, startWeek: a.startWeek, endYear: a.endYear, endWeek: a.endWeek };
+      }
+      return null;
+    },
+
+    /** Alle Projekteinsätze eines Mitarbeiters (unsortiert nach Filtern, nur die Rohdaten). */
+    getEmployeeAssignments(employeeId) {
+      return this.state.projects
+        .filter((p) => Array.isArray(p.employeeIds) && p.employeeIds.includes(employeeId))
+        .map((p) => ({
+          project: p,
+          span: this.getEmployeeAssignmentSpan(p, employeeId),
+          hasOverride: !!this.getEmployeeRangeOverride(p, employeeId)
+        }));
+    },
+
+    /** Markiert Terminüberschneidungen zwischen den Einsätzen desselben Mitarbeiters. */
+    computeAssignmentConflicts(assignments) {
+      const withIdx = assignments.map((a) => Object.assign({}, a, { idx: this.getSpan(a.span) }));
+      withIdx.forEach((a) => { a.conflicts = []; });
+      for (let i = 0; i < withIdx.length; i++) {
+        for (let j = i + 1; j < withIdx.length; j++) {
+          const A = withIdx[i].idx, B = withIdx[j].idx;
+          if (A.startIdx <= B.endIdx && B.startIdx <= A.endIdx) {
+            withIdx[i].conflicts.push(withIdx[j].project);
+            withIdx[j].conflicts.push(withIdx[i].project);
+          }
+        }
+      }
+      return withIdx;
+    },
+
+    /** Greedy Intervall-Stapelung: weist jedem Eintrag eine Spur (Sub-Zeile) zu,
+     *  sodass sich überschneidende Balken niemals dieselbe Spur teilen. */
+    assignLanes(assignmentsWithIdx) {
+      const sorted = assignmentsWithIdx.slice().sort((a, b) => a.idx.startIdx - b.idx.startIdx);
+      const laneEnds = []; // laneEnds[lane] = letzter belegter Wochenindex
+      sorted.forEach((a) => {
+        let lane = laneEnds.findIndex((end) => end < a.idx.startIdx);
+        if (lane === -1) { lane = laneEnds.length; laneEnds.push(a.idx.endIdx); }
+        else laneEnds[lane] = a.idx.endIdx;
+        a.lane = lane;
+      });
+      return { rows: sorted, laneCount: Math.max(1, laneEnds.length) };
+    },
+
+    /** Auslastungskennzahlen eines Mitarbeiters (Projektanzahl, belegte KW, Konfliktstatus). */
+    getEmployeeWorkload(employeeId) {
+      const assignments = this.computeAssignmentConflicts(this.getEmployeeAssignments(employeeId));
+      const occupied = new Set();
+      let hasConflict = false;
+      assignments.forEach((a) => {
+        for (let i = a.idx.startIdx; i <= a.idx.endIdx; i++) occupied.add(i);
+        if (a.conflicts.length) hasConflict = true;
+      });
+      return {
+        projectCount: assignments.length,
+        occupiedWeeks: occupied.size,
+        hasConflict,
+        assignments
+      };
+    },
+
+    /** Gefilterte + sortierte Mitarbeiterliste für die Personaleinsatzplanung. */
+    getVisiblePersonalEmployees() {
+      const f = this.state.ui.personal.filters;
+      const search = this.state.ui.personal.search.trim().toLowerCase();
+      const structuralFilterActive = !!(f.projekt || f.leiter || f.ober || f.tag || f.status);
+
+      const matchesProjectFilters = (p) => {
+        if (f.leiter && p.projektleiter !== f.leiter) return false;
+        if (f.ober && p.obermonteur !== f.ober) return false;
+        if (f.tag && !(Array.isArray(p.tags) && p.tags.includes(f.tag))) return false;
+        if (f.status && p.status !== f.status) return false;
+        if (f.projekt && p.id !== f.projekt) return false;
+        return true;
+      };
+
+      let list = this.state.employees.slice();
+      if (f.funktion) list = list.filter((e) => e.funktion === f.funktion);
+      if (f.mitarbeiter) list = list.filter((e) => e.id === f.mitarbeiter);
+
+      list = list.map((e) => {
+        const all = this.getEmployeeAssignments(e.id).filter((a) => matchesProjectFilters(a.project));
+        const searchMatch = !search || (
+          (e.vorname + " " + e.nachname).toLowerCase().includes(search) ||
+          all.some((a) => [a.project.name, a.project.projektleiter, a.project.auftraggeber].join(" ").toLowerCase().includes(search))
+        );
+        return { employee: e, assignments: all, searchMatch };
+      });
+
+      if (search) list = list.filter((row) => row.searchMatch);
+      if (structuralFilterActive) list = list.filter((row) => row.assignments.length > 0);
+
+      const sort = this.state.ui.personal.sort;
+      if (sort === "manuell") {
+        list.sort((a, b) => (a.employee.sortOrder || 0) - (b.employee.sortOrder || 0));
+      } else if (sort === "funktion") {
+        list.sort((a, b) => (a.employee.funktion || "").localeCompare(b.employee.funktion || "") ||
+          (a.employee.nachname || "").localeCompare(b.employee.nachname || ""));
+      } else if (sort === "team") {
+        list.sort((a, b) => (a.employee.team || "").localeCompare(b.employee.team || "") ||
+          (a.employee.nachname || "").localeCompare(b.employee.nachname || ""));
+      } else {
+        list.sort((a, b) => (a.employee.nachname || "").localeCompare(b.employee.nachname || "") ||
+          (a.employee.vorname || "").localeCompare(b.employee.vorname || ""));
+      }
+
+      return list;
     },
 
     /* ---------------- Kapazität ---------------- */

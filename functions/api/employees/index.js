@@ -30,14 +30,27 @@ export async function onRequestPost(context) {
   const now = new Date().toISOString();
 
   try {
+    let sortOrder = body.sortOrder;
+    if (sortOrder === undefined || sortOrder === null) {
+      const maxRow = await db.prepare("SELECT COALESCE(MAX(sortOrder), -1) AS m FROM employees").first();
+      sortOrder = (maxRow ? maxRow.m : -1) + 1;
+    }
+
     await db.prepare(
-      `INSERT INTO employees (id, vorname, nachname, funktion, aktiv, bemerkungen, createdAt, updatedAt)
-       VALUES (?,?,?,?,?,?,?,?)`
+      `INSERT INTO employees
+        (id, vorname, nachname, funktion, team, qualifikation, wochenarbeitszeit,
+         beschaeftigungsstatus, sortOrder, aktiv, bemerkungen, createdAt, updatedAt)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       body.id,
       body.vorname || "",
       body.nachname || "",
       body.funktion || "",
+      body.team || "",
+      body.qualifikation || "",
+      body.wochenarbeitszeit || null,
+      body.beschaeftigungsstatus || "",
+      sortOrder,
       body.aktiv === false ? 0 : 1,
       body.bemerkungen || "",
       body.createdAt || now,

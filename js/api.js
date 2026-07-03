@@ -75,6 +75,9 @@
   function deleteEmployee(id) {
     return request("/employees/" + encodeURIComponent(id), { method: "DELETE" });
   }
+  function reorderEmployees(order) {
+    return request("/employees/reorder", { method: "PUT", body: JSON.stringify({ order }) });
+  }
 
   /* ---------------- Vergabeportale ---------------- */
   function getPortals() {
@@ -112,7 +115,7 @@
     createTender, updateTender, deleteTender,
     updateSettings,
     currentIdentity,
-    getEmployees, createEmployee, updateEmployee, deleteEmployee,
+    getEmployees, createEmployee, updateEmployee, deleteEmployee, reorderEmployees,
     getPortals, createPortal, updatePortal, deletePortal,
     getAdminConfig, updateAdminConfig, adminReset,
     runImport

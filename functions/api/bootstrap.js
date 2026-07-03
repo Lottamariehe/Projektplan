@@ -35,8 +35,16 @@ export async function onRequestGet(context) {
     }
 
     const empByProject = {};
+    const assignmentsByProject = {};
     (projectEmployees.results || []).forEach((row) => {
       (empByProject[row.projectId] = empByProject[row.projectId] || []).push(row.employeeId);
+      (assignmentsByProject[row.projectId] = assignmentsByProject[row.projectId] || []).push({
+        employeeId: row.employeeId,
+        startYear: row.startYear || null,
+        startWeek: row.startWeek || null,
+        endYear: row.endYear || null,
+        endWeek: row.endWeek || null
+      });
     });
     const tagsByProject = {};
     (projectTags.results || []).forEach((row) => {
@@ -49,6 +57,7 @@ export async function onRequestGet(context) {
 
     const projectList = (projects.results || []).map((p) => Object.assign({}, p, {
       employeeIds: empByProject[p.id] || [],
+      employeeAssignments: assignmentsByProject[p.id] || [],
       tags: tagsByProject[p.id] || []
     }));
     const tenderList = (tenders.results || []).map((t) => Object.assign({}, t, {

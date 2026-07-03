@@ -723,6 +723,53 @@ tr.row-inactive{ opacity: 0.5; }
 .btn[disabled]{ opacity: 0.45; cursor: not-allowed; }
 .btn[disabled]:hover{ background: var(--color-surface); border-color: var(--color-border); }
 
+/* ---------------- Mitarbeiter-Zuordnung im Projekt-Modal ---------------- */
+
+.employee-assign-list{
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.employee-assign-row{
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+.employee-assign-row:hover{ background: var(--color-bg); }
+.employee-assign-check{ display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 220px; cursor: pointer; }
+.employee-assign-range-toggle{ display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--color-text-muted); cursor: pointer; white-space: nowrap; }
+.employee-assign-range{ display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap; }
+.employee-assign-range input{ width: 52px; padding: 4px 6px; border: 1px solid var(--color-border); border-radius: 6px; }
+.employee-assign-range input.ea-start-year, .employee-assign-range input.ea-end-year{ width: 68px; }
+
+/* ---------------- Personaleinsatzplanung ---------------- */
+
+.personal-side-row{ cursor: pointer; }
+.personal-side-top{ display: flex; align-items: center; gap: 6px; }
+.personal-side-top .p-name{ max-width: 190px; }
+.drag-handle{ cursor: grab; color: var(--color-text-faint); font-size: 13px; user-select: none; }
+.drag-handle:active{ cursor: grabbing; }
+.conflict-icon{ color: var(--color-danger); font-size: 12px; line-height: 1; }
+.workload-badge{ font-size: 10.5px; color: var(--color-text-faint); margin-top: 1px; }
+
+.personal-row-dim{ opacity: 0.35; }
+.gantt-side-row.dragging-row{ opacity: 0.4; }
+.gantt-side-row.drop-target{ outline: 2px dashed var(--color-primary); outline-offset: -2px; }
+
+.personal-bar{ font-size: 11px; }
+.personal-bar-dim{ opacity: 0.22; }
+.personal-bar-highlight{ outline: 2px solid var(--color-primary-dark); outline-offset: 1px; box-shadow: var(--shadow-md); z-index: 6; }
+.personal-bar-conflict{ outline: 2px solid var(--color-danger); outline-offset: 1px; }
+.personal-bar-override{ border-bottom: 3px solid rgba(255,255,255,0.9); }
+
 /* ---------------- Import-Assistent ---------------- */
 
 .import-wizard{ width: 820px; max-width: 94vw; }

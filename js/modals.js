@@ -64,6 +64,63 @@
     return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
   }
 
+  /** Eine Zeile der Mitarbeiterzuordnung mit optionalem individuellem Zeitraum. */
+  function employeeAssignRow(opt, checked, override, projectSpan) {
+    const s = override || projectSpan;
+    return `<div class="employee-assign-row" data-emp="${Util.escapeHtml(opt.value)}">
+      <label class="employee-assign-check">
+        <input type="checkbox" class="ea-check" value="${Util.escapeHtml(opt.value)}" ${checked ? "checked" : ""}>
+        <span>${Util.escapeHtml(opt.label)}</span>
+      </label>
+      <label class="employee-assign-range-toggle ${checked ? "" : "hidden"}">
+        <input type="checkbox" class="ea-range-toggle" ${override ? "checked" : ""}>
+        eigener Zeitraum
+      </label>
+      <div class="employee-assign-range ${checked && override ? "" : "hidden"}">
+        KW <input type="number" class="ea-start-week" min="1" max="53" value="${s.startWeek}">
+        / <input type="number" class="ea-start-year" min="2020" max="2100" value="${s.startYear}">
+        – KW <input type="number" class="ea-end-week" min="1" max="53" value="${s.endWeek}">
+        / <input type="number" class="ea-end-year" min="2020" max="2100" value="${s.endYear}">
+      </div>
+    </div>`;
+  }
+
+  function bindEmployeeAssignRows(container) {
+    container.querySelectorAll(".employee-assign-row").forEach((row) => {
+      const check = row.querySelector(".ea-check");
+      const rangeToggleLabel = row.querySelector(".employee-assign-range-toggle");
+      const rangeToggle = row.querySelector(".ea-range-toggle");
+      const rangeBox = row.querySelector(".employee-assign-range");
+      check.addEventListener("change", () => {
+        rangeToggleLabel.classList.toggle("hidden", !check.checked);
+        if (!check.checked) { rangeToggle.checked = false; rangeBox.classList.add("hidden"); }
+      });
+      rangeToggle.addEventListener("change", () => {
+        rangeBox.classList.toggle("hidden", !rangeToggle.checked);
+      });
+    });
+  }
+
+  /** Liest employeeIds + employeeRanges (nur für Zeilen mit aktivem "eigener Zeitraum"). */
+  function readEmployeeAssignments(container) {
+    const employeeIds = [];
+    const employeeRanges = {};
+    container.querySelectorAll(".employee-assign-row").forEach((row) => {
+      const empId = row.dataset.emp;
+      if (!row.querySelector(".ea-check").checked) return;
+      employeeIds.push(empId);
+      if (row.querySelector(".ea-range-toggle").checked) {
+        employeeRanges[empId] = {
+          startWeek: parseInt(row.querySelector(".ea-start-week").value, 10),
+          startYear: parseInt(row.querySelector(".ea-start-year").value, 10),
+          endWeek: parseInt(row.querySelector(".ea-end-week").value, 10),
+          endYear: parseInt(row.querySelector(".ea-end-year").value, 10)
+        };
+      }
+    });
+    return { employeeIds, employeeRanges };
+  }
+
   /* ==================== PROJEKT ==================== */
 
   function openProjectModal(id) {
@@ -156,8 +213,14 @@
 
         <div class="form-row span-2">
           <label>Zugeordnete Mitarbeiter</label>
-          <div class="checkbox-chip-group">
-            ${employeeOptions.length ? checkboxGroup("fEmployees", employeeOptions, p.employeeIds) : `<span class="settings-hint" style="margin:0;">Noch keine aktiven Mitarbeiter angelegt (Einstellungen → Mitarbeiter).</span>`}
+          <p class="settings-hint" style="margin:0 0 8px;">Standardmäßig ist ein Mitarbeiter während der gesamten Projektlaufzeit eingeplant. Über „eigener Zeitraum“ kann ein abweichender Einsatzzeitraum innerhalb des Projekts hinterlegt werden (z. B. für die Personaleinsatzplanung).</p>
+          <div class="employee-assign-list" id="employeeAssignList">
+            ${employeeOptions.length ? employeeOptions.map((opt) => employeeAssignRow(
+              opt,
+              (p.employeeIds || []).includes(opt.value),
+              editing ? App.getEmployeeRangeOverride(p, opt.value) : null,
+              { startYear: p.startYear, startWeek: p.startWeek, endYear: p.endYear, endWeek: p.endWeek }
+            )).join("") : `<span class="settings-hint" style="margin:0;">Noch keine aktiven Mitarbeiter angelegt (Einstellungen → Mitarbeiter).</span>`}
           </div>
         </div>
 
@@ -186,6 +249,9 @@
 
     document.getElementById("mClose").addEventListener("click", close);
     document.getElementById("mCancel").addEventListener("click", close);
+
+    const employeeAssignList = document.getElementById("employeeAssignList");
+    if (employeeAssignList) bindEmployeeAssignRows(employeeAssignList);
 
     document.querySelectorAll("#fColorPalette .color-swatch").forEach((sw) => {
       sw.addEventListener("click", () => {
@@ -221,6 +287,7 @@
     }
 
     document.getElementById("mSave").addEventListener("click", () => {
+      const assign = employeeAssignList ? readEmployeeAssignments(employeeAssignList) : { employeeIds: [], employeeRanges: {} };
       const data = {
         name: document.getElementById("fName").value.trim(),
         auftraggeber: document.getElementById("fAuftraggeber").value.trim(),
@@ -237,7 +304,8 @@
         bemerkungen: document.getElementById("fBemerkungen").value.trim(),
         notizen: document.getElementById("fNotizen").value.trim(),
         tags: readCheckboxGroup("fTags"),
-        employeeIds: readCheckboxGroup("fEmployees")
+        employeeIds: assign.employeeIds,
+        employeeRanges: assign.employeeRanges
       };
 
       const err = validateRange(data);

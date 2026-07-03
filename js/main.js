@@ -55,6 +55,7 @@
     Ausschreibungen.render();
     if (App.state.ui.view === "settings") renderSettingsView();
     if (App.state.ui.view === "mitarbeiter") Employees.render();
+    if (App.state.ui.view === "personal") Personal.render();
   }
 
   /* ---------------- Navigation ---------------- */
@@ -66,6 +67,7 @@
     if (view === "settings") renderSettingsView();
     if (view === "mitarbeiter") Employees.render();
     if (view === "planner") setTimeout(() => Gantt.render(), 0);
+    if (view === "personal") setTimeout(() => Personal.render(), 0);
   }
 
   /* ---------------- Einstellungen ---------------- */
@@ -380,8 +382,10 @@
     bindSettingsEvents();
     bindScrollSync();
     Employees.bindToolbar();
+    Personal.bindToolbar();
 
     document.getElementById("yearLabel").textContent = new Date().getFullYear();
+    document.getElementById("yearLabelPersonal").textContent = new Date().getFullYear();
 
     renderAll();
     showCurrentUser();

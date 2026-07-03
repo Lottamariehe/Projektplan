@@ -265,6 +265,20 @@
     "Obermonteur", "Monteur", "Servicetechniker", "Isolierer", "Auszubildender", "Leiharbeiter", "Projektleiter"
   ];
 
+  // Freitext-Vorschläge für die Personaleinsatzplanung / Mitarbeiterverwaltung
+  // (kein festes Vokabular, nur Datalist-Vorschläge).
+  const EMPLOYEE_BESCHAEFTIGUNG = [
+    "Vollzeit", "Teilzeit", "Minijob/Aushilfe", "Auszubildender", "Praktikant"
+  ];
+
+  // Sortiermodi für die Mitarbeiterzeilen in der Personaleinsatzplanung.
+  const PERSONAL_SORT_MODES = [
+    { value: "alpha", label: "Alphabetisch" },
+    { value: "funktion", label: "Nach Funktion" },
+    { value: "team", label: "Nach Team" },
+    { value: "manuell", label: "Manuell (Drag & Drop)" }
+  ];
+
   global.Storage = {
     STORAGE_KEY,
     PROJECT_STATUS,
@@ -272,6 +286,8 @@
     PROJECT_TAGS,
     TENDER_GEWERKE,
     EMPLOYEE_FUNKTIONEN,
+    EMPLOYEE_BESCHAEFTIGUNG,
+    PERSONAL_SORT_MODES,
     DEFAULT_COLORS,
     defaultSettings,
     buildSampleData,

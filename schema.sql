@@ -74,20 +74,31 @@ CREATE TABLE IF NOT EXISTS settings (
 -- Baustellenmitarbeiter (Stammdaten)
 -- ---------------------------------------------------------
 CREATE TABLE IF NOT EXISTS employees (
-  id          TEXT PRIMARY KEY,
-  vorname     TEXT NOT NULL DEFAULT '',
-  nachname    TEXT NOT NULL DEFAULT '',
-  funktion    TEXT,
-  aktiv       INTEGER NOT NULL DEFAULT 1,
-  bemerkungen TEXT,
-  createdAt   TEXT,
-  updatedAt   TEXT
+  id                    TEXT PRIMARY KEY,
+  vorname               TEXT NOT NULL DEFAULT '',
+  nachname              TEXT NOT NULL DEFAULT '',
+  funktion              TEXT,
+  team                  TEXT,
+  qualifikation         TEXT,
+  wochenarbeitszeit     REAL,
+  beschaeftigungsstatus TEXT,
+  sortOrder             INTEGER NOT NULL DEFAULT 0,
+  aktiv                 INTEGER NOT NULL DEFAULT 1,
+  bemerkungen           TEXT,
+  createdAt             TEXT,
+  updatedAt             TEXT
 );
 
--- Zuordnung Projekt <-> Mitarbeiter (Mehrfachauswahl in beide Richtungen)
+-- Zuordnung Projekt <-> Mitarbeiter (Mehrfachauswahl in beide Richtungen).
+-- startYear/startWeek/endYear/endWeek: optionaler individueller Zeitraum
+-- innerhalb der Projektlaufzeit (NULL = gesamte Projektlaufzeit, Standardfall).
 CREATE TABLE IF NOT EXISTS project_employees (
   projectId  TEXT NOT NULL,
   employeeId TEXT NOT NULL,
+  startYear  INTEGER,
+  startWeek  INTEGER,
+  endYear    INTEGER,
+  endWeek    INTEGER,
   PRIMARY KEY (projectId, employeeId)
 );
 
@@ -142,6 +153,9 @@ CREATE INDEX IF NOT EXISTS idx_tenders_zeitraum ON tenders (startYear, startWeek
 CREATE INDEX IF NOT EXISTS idx_tenders_status ON tenders (angebotsstatus);
 CREATE INDEX IF NOT EXISTS idx_tenders_portal ON tenders (portalId);
 CREATE INDEX IF NOT EXISTS idx_project_employees_employee ON project_employees (employeeId);
+CREATE INDEX IF NOT EXISTS idx_project_employees_zeitraum ON project_employees (employeeId, startYear, startWeek, endYear, endWeek);
 CREATE INDEX IF NOT EXISTS idx_project_tags_tag ON project_tags (tag);
 CREATE INDEX IF NOT EXISTS idx_tender_gewerke_gewerk ON tender_gewerke (gewerk);
 CREATE INDEX IF NOT EXISTS idx_employees_aktiv ON employees (aktiv);
+CREATE INDEX IF NOT EXISTS idx_employees_sortorder ON employees (sortOrder);
+CREATE INDEX IF NOT EXISTS idx_employees_team ON employees (team);

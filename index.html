@@ -20,6 +20,7 @@
     <nav class="main-nav" id="mainNav">
       <button class="nav-btn active" data-view="planner">Projektplaner</button>
       <button class="nav-btn" data-view="ausschreibungen">Ausschreibungen</button>
+      <button class="nav-btn" data-view="personal">Personaleinsatzplanung</button>
       <button class="nav-btn" data-view="mitarbeiter">Mitarbeiter</button>
       <button class="nav-btn" data-view="settings">Einstellungen</button>
     </nav>
@@ -138,6 +139,62 @@
       </div>
     </section>
 
+    <!-- ================= PERSONALEINSATZPLANUNG ================= -->
+    <section id="view-personal" class="view">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="icon-btn" id="btnPrevYearPersonal" title="Vorheriges Jahr">‹</button>
+          <span class="year-label" id="yearLabelPersonal">2026</span>
+          <button class="icon-btn" id="btnNextYearPersonal" title="Nächstes Jahr">›</button>
+          <button class="btn btn-ghost" id="btnTodayPersonal">Heute</button>
+        </div>
+        <div class="toolbar-group zoom-group">
+          <span class="toolbar-label">Zoom</span>
+          <button class="zoom-btn" data-zoom="month">Monat</button>
+          <button class="zoom-btn" data-zoom="quarter">Quartal</button>
+          <button class="zoom-btn" data-zoom="half">Halbjahr</button>
+          <button class="zoom-btn active" data-zoom="year">Jahr</button>
+        </div>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Sortierung</span>
+          <select id="personalSort" class="select-input" style="min-width:170px;"></select>
+          <label class="checkbox-label small">
+            <input type="checkbox" id="personalToggleDetails">
+            Details anzeigen
+          </label>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="toolbar-group filter-group" style="margin-left:0; flex-wrap:wrap;">
+          <select id="personalFilterMitarbeiter" class="select-input"><option value="">Alle Mitarbeiter</option></select>
+          <select id="personalFilterFunktion" class="select-input"><option value="">Alle Funktionen</option></select>
+          <select id="personalFilterProjekt" class="select-input"><option value="">Alle Projekte</option></select>
+          <select id="personalFilterLeiter" class="select-input"><option value="">Alle Projektleiter</option></select>
+          <select id="personalFilterOber" class="select-input"><option value="">Alle Obermonteure</option></select>
+          <select id="personalFilterTag" class="select-input"><option value="">Alle Tags/Gewerke</option></select>
+          <select id="personalFilterStatus" class="select-input"><option value="">Alle Status</option></select>
+          <input type="search" id="personalSearch" class="select-input" placeholder="Suche Projekt, Mitarbeiter, Auftraggeber ...">
+        </div>
+        <div class="toolbar-group">
+          <button class="btn btn-ghost" id="btnExportPersonalXlsx">Export (Excel)</button>
+          <button class="btn btn-ghost" id="btnPrintPersonal">Drucken / PDF</button>
+        </div>
+      </div>
+
+      <div id="personalConflictBanner" class="capacity-warning hidden"></div>
+
+      <div class="gantt-wrapper personal-wrapper">
+        <div class="gantt-scroll" id="personalScroll">
+          <div class="gantt-inner" id="personalInner">
+            <div class="gantt-side-header">Mitarbeiter</div>
+            <div class="gantt-header" id="personalHeader"></div>
+            <div class="gantt-side" id="personalSide"></div>
+            <div class="gantt-body" id="personalBody"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ================= MITARBEITER ================= -->
     <section id="view-mitarbeiter" class="view">
       <div class="toolbar">
@@ -152,6 +209,10 @@
               <th>Vorname</th>
               <th>Nachname</th>
               <th>Funktion/Rolle</th>
+              <th>Team</th>
+              <th>Qualifikation</th>
+              <th>Std./Woche</th>
+              <th>Beschäftigung</th>
               <th>Aktiv</th>
               <th>Bemerkungen</th>
               <th></th>
@@ -161,6 +222,8 @@
         </table>
       </div>
       <datalist id="dlFunktion"></datalist>
+      <datalist id="dlTeam"></datalist>
+      <datalist id="dlBeschaeftigung"></datalist>
     </section>
 
     <!-- ================= EINSTELLUNGEN ================= -->
@@ -266,6 +329,7 @@
 <script src="js/capacity.js"></script>
 <script src="js/ausschreibungen.js"></script>
 <script src="js/employees.js"></script>
+<script src="js/personal.js"></script>
 <script src="js/modals.js"></script>
 <script src="js/importwizard.js"></script>
 <script src="js/export.js"></script>
