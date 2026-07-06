@@ -64,61 +64,139 @@
     return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
   }
 
-  /** Eine Zeile der Mitarbeiterzuordnung mit optionalem individuellem Zeitraum. */
-  function employeeAssignRow(opt, checked, override, projectSpan) {
-    const s = override || projectSpan;
-    return `<div class="employee-assign-row" data-emp="${Util.escapeHtml(opt.value)}">
-      <label class="employee-assign-check">
-        <input type="checkbox" class="ea-check" value="${Util.escapeHtml(opt.value)}" ${checked ? "checked" : ""}>
-        <span>${Util.escapeHtml(opt.label)}</span>
-      </label>
-      <label class="employee-assign-range-toggle ${checked ? "" : "hidden"}">
-        <input type="checkbox" class="ea-range-toggle" ${override ? "checked" : ""}>
-        eigener Zeitraum
-      </label>
-      <div class="employee-assign-range ${checked && override ? "" : "hidden"}">
-        KW <input type="number" class="ea-start-week" min="1" max="53" value="${s.startWeek}">
-        / <input type="number" class="ea-start-year" min="2020" max="2100" value="${s.startYear}">
-        – KW <input type="number" class="ea-end-week" min="1" max="53" value="${s.endWeek}">
-        / <input type="number" class="ea-end-year" min="2020" max="2100" value="${s.endYear}">
-      </div>
+  /* ---------------- Mitarbeiterzuordnung mit beliebig vielen Einsatzabschnitten ---------------- */
+  /* Der Zustand wird während der Modal-Sitzung in JS gehalten (assignState,
+     siehe openProjectModal) und bei jeder Änderung komplett neu gerendert -
+     das hält Hinzufügen/Entfernen von Zeiträumen robust und einfach. */
+
+  function periodRowHtml(empId, period, projectSpan) {
+    const s = period || projectSpan;
+    return `<div class="ea-period-row" data-period-id="${Util.escapeHtml(period && period.id ? period.id : "")}">
+      KW <input type="number" class="ea-start-week" min="1" max="53" value="${s.startWeek}">
+      / <input type="number" class="ea-start-year" min="2020" max="2100" value="${s.startYear}">
+      – KW <input type="number" class="ea-end-week" min="1" max="53" value="${s.endWeek}">
+      / <input type="number" class="ea-end-year" min="2020" max="2100" value="${s.endYear}">
+      <button type="button" class="btn-mini ea-remove-period" title="Zeitraum entfernen">&times;</button>
     </div>`;
   }
 
-  function bindEmployeeAssignRows(container) {
+  function employeeAssignRowHtml(opt, entry, projectSpan) {
+    const vacationOverlaps = App.getVacationOverlapsForSpan(opt.value, projectSpan);
+    const vacationWarn = vacationOverlaps.length
+      ? `<span class="ea-vacation-warn" title="Im Urlaub: ${vacationOverlaps.map((o) => Util.escapeHtml(App.state.ui.weeks[o.startIdx].week + "/" + App.state.ui.weeks[o.startIdx].year + " – " + App.state.ui.weeks[o.endIdx].week + "/" + App.state.ui.weeks[o.endIdx].year)).join(", ")}">⚠ Urlaub im Zeitraum</span>`
+      : "";
+    const periodsHtml = entry.periods.map((p) => periodRowHtml(opt.value, p, projectSpan)).join("");
+    return `<div class="employee-assign-row" data-emp="${Util.escapeHtml(opt.value)}">
+      <div class="employee-assign-header">
+        <label class="employee-assign-check">
+          <input type="checkbox" class="ea-check" value="${Util.escapeHtml(opt.value)}" ${entry.checked ? "checked" : ""}>
+          <span>${Util.escapeHtml(opt.label)}</span>
+        </label>
+        ${vacationWarn}
+        <button type="button" class="btn-mini ea-add-period ${entry.checked ? "" : "hidden"}">+ Zeitraum</button>
+      </div>
+      <div class="ea-periods ${entry.periods.length ? "" : "hidden"}">${periodsHtml}</div>
+      <p class="settings-hint ea-implicit-hint ${entry.checked && !entry.periods.length ? "" : "hidden"}" style="margin:2px 0 0;">gesamte Projektlaufzeit (kein eigener Zeitraum hinterlegt)</p>
+    </div>`;
+  }
+
+  /** Baut den anfänglichen Zuordnungs-Zustand aus dem Projekt (oder leer für ein neues Projekt). */
+  function buildInitialAssignState(project, editing, projectSpan) {
+    const state = {};
+    App.getActiveEmployees().forEach((e) => {
+      const checked = editing && Array.isArray(project.employeeIds) && project.employeeIds.includes(e.id);
+      const periods = checked ? App.getEmployeeRangeOverride(project, e.id) || [] : [];
+      state[e.id] = { checked, periods: periods.map((p) => ({ id: p.id, startYear: p.startYear, startWeek: p.startWeek, endYear: p.endYear, endWeek: p.endWeek })) };
+    });
+    return state;
+  }
+
+  function renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan) {
+    container.innerHTML = employeeOptions.length
+      ? employeeOptions.map((opt) => employeeAssignRowHtml(opt, assignState[opt.value], projectSpan)).join("")
+      : `<span class="settings-hint" style="margin:0;">Noch keine aktiven Mitarbeiter angelegt (Einstellungen → Mitarbeiter).</span>`;
+
     container.querySelectorAll(".employee-assign-row").forEach((row) => {
-      const check = row.querySelector(".ea-check");
-      const rangeToggleLabel = row.querySelector(".employee-assign-range-toggle");
-      const rangeToggle = row.querySelector(".ea-range-toggle");
-      const rangeBox = row.querySelector(".employee-assign-range");
-      check.addEventListener("change", () => {
-        rangeToggleLabel.classList.toggle("hidden", !check.checked);
-        if (!check.checked) { rangeToggle.checked = false; rangeBox.classList.add("hidden"); }
+      const empId = row.dataset.emp;
+      const entry = assignState[empId];
+      row.querySelector(".ea-check").addEventListener("change", (e) => {
+        entry.checked = e.target.checked;
+        renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan);
       });
-      rangeToggle.addEventListener("change", () => {
-        rangeBox.classList.toggle("hidden", !rangeToggle.checked);
+      const addBtn = row.querySelector(".ea-add-period");
+      if (addBtn) addBtn.addEventListener("click", () => {
+        entry.periods.push({ id: null, startYear: projectSpan.startYear, startWeek: projectSpan.startWeek, endYear: projectSpan.endYear, endWeek: projectSpan.endWeek });
+        renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan);
+      });
+      row.querySelectorAll(".ea-period-row").forEach((periodRow, i) => {
+        periodRow.querySelector(".ea-remove-period").addEventListener("click", () => {
+          entry.periods.splice(i, 1);
+          renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan);
+        });
+        const syncPeriod = () => {
+          entry.periods[i] = Object.assign({}, entry.periods[i], {
+            startWeek: parseInt(periodRow.querySelector(".ea-start-week").value, 10),
+            startYear: parseInt(periodRow.querySelector(".ea-start-year").value, 10),
+            endWeek: parseInt(periodRow.querySelector(".ea-end-week").value, 10),
+            endYear: parseInt(periodRow.querySelector(".ea-end-year").value, 10)
+          });
+        };
+        periodRow.querySelectorAll("input").forEach((inp) => inp.addEventListener("change", syncPeriod));
       });
     });
   }
 
-  /** Liest employeeIds + employeeRanges (nur für Zeilen mit aktivem "eigener Zeitraum"). */
-  function readEmployeeAssignments(container) {
+  /** Liest employeeIds + assignmentPeriods aus dem aktuellen assignState. */
+  function readEmployeeAssignments(assignState) {
     const employeeIds = [];
-    const employeeRanges = {};
-    container.querySelectorAll(".employee-assign-row").forEach((row) => {
-      const empId = row.dataset.emp;
-      if (!row.querySelector(".ea-check").checked) return;
+    const assignmentPeriods = {};
+    Object.keys(assignState).forEach((empId) => {
+      const entry = assignState[empId];
+      if (!entry.checked) return;
       employeeIds.push(empId);
-      if (row.querySelector(".ea-range-toggle").checked) {
-        employeeRanges[empId] = {
-          startWeek: parseInt(row.querySelector(".ea-start-week").value, 10),
-          startYear: parseInt(row.querySelector(".ea-start-year").value, 10),
-          endWeek: parseInt(row.querySelector(".ea-end-week").value, 10),
-          endYear: parseInt(row.querySelector(".ea-end-year").value, 10)
-        };
-      }
+      if (entry.periods.length) assignmentPeriods[empId] = entry.periods.slice();
     });
-    return { employeeIds, employeeRanges };
+    return { employeeIds, assignmentPeriods };
+  }
+
+  /* ---------------- Bauabschnitte ---------------- */
+
+  function phaseRowHtml(phase) {
+    return `<div class="phase-row" data-phase-id="${Util.escapeHtml(phase.id || "")}">
+      <input type="text" class="ph-name" placeholder="Bezeichnung (optional)" value="${Util.escapeHtml(phase.name || "")}">
+      KW <input type="number" class="ph-start-week" min="1" max="53" value="${phase.startWeek}">
+      / <input type="number" class="ph-start-year" min="2020" max="2100" value="${phase.startYear}">
+      – KW <input type="number" class="ph-end-week" min="1" max="53" value="${phase.endWeek}">
+      / <input type="number" class="ph-end-year" min="2020" max="2100" value="${phase.endYear}">
+      <button type="button" class="btn-mini ph-remove" title="Bauabschnitt entfernen">&times;</button>
+    </div>`;
+  }
+
+  function renderPhaseList(container, phaseState, projectSpan) {
+    container.innerHTML = phaseState.length
+      ? phaseState.map(phaseRowHtml).join("")
+      : `<span class="settings-hint" style="margin:0;">Keine Bauabschnitte – das Projekt wird als ein durchgehender Balken über die gesamte Laufzeit dargestellt.</span>`;
+
+    container.querySelectorAll(".phase-row").forEach((row, i) => {
+      row.querySelector(".ph-remove").addEventListener("click", () => {
+        phaseState.splice(i, 1);
+        renderPhaseList(container, phaseState, projectSpan);
+      });
+      const sync = () => {
+        phaseState[i] = Object.assign({}, phaseState[i], {
+          name: row.querySelector(".ph-name").value.trim(),
+          startWeek: parseInt(row.querySelector(".ph-start-week").value, 10),
+          startYear: parseInt(row.querySelector(".ph-start-year").value, 10),
+          endWeek: parseInt(row.querySelector(".ph-end-week").value, 10),
+          endYear: parseInt(row.querySelector(".ph-end-year").value, 10)
+        });
+      };
+      row.querySelectorAll("input").forEach((inp) => inp.addEventListener("change", sync));
+    });
+  }
+
+  function readPhases(phaseState) {
+    return phaseState.map((ph, i) => Object.assign({}, ph, { sortOrder: i }));
   }
 
   /* ==================== PROJEKT ==================== */
@@ -213,15 +291,15 @@
 
         <div class="form-row span-2">
           <label>Zugeordnete Mitarbeiter</label>
-          <p class="settings-hint" style="margin:0 0 8px;">Standardmäßig ist ein Mitarbeiter während der gesamten Projektlaufzeit eingeplant. Über „eigener Zeitraum“ kann ein abweichender Einsatzzeitraum innerhalb des Projekts hinterlegt werden (z. B. für die Personaleinsatzplanung).</p>
-          <div class="employee-assign-list" id="employeeAssignList">
-            ${employeeOptions.length ? employeeOptions.map((opt) => employeeAssignRow(
-              opt,
-              (p.employeeIds || []).includes(opt.value),
-              editing ? App.getEmployeeRangeOverride(p, opt.value) : null,
-              { startYear: p.startYear, startWeek: p.startWeek, endYear: p.endYear, endWeek: p.endWeek }
-            )).join("") : `<span class="settings-hint" style="margin:0;">Noch keine aktiven Mitarbeiter angelegt (Einstellungen → Mitarbeiter).</span>`}
-          </div>
+          <p class="settings-hint" style="margin:0 0 8px;">Standardmäßig ist ein Mitarbeiter während der gesamten Projektlaufzeit eingeplant. Über „+ Zeitraum“ können beliebig viele eigene Einsatzabschnitte innerhalb des Projekts hinterlegt werden (z. B. KW15-18 und erneut KW22-26).</p>
+          <div class="employee-assign-list" id="employeeAssignList"></div>
+        </div>
+
+        <div class="form-row span-2">
+          <label>Bauabschnitte (optional)</label>
+          <p class="settings-hint" style="margin:0 0 8px;">Ohne Bauabschnitte wird das Projekt als ein durchgehender Balken dargestellt. Mit Bauabschnitten (z. B. bei Bauunterbrechungen) werden mehrere getrennte Balken angezeigt und die Kapazität nur innerhalb der Abschnitte berechnet.</p>
+          <div class="phase-list" id="phaseList"></div>
+          <button type="button" class="btn btn-ghost" id="btnAddPhase" style="margin-top:8px;">+ Bauabschnitt hinzufügen</button>
         </div>
 
         <div class="form-row span-2">
@@ -250,8 +328,20 @@
     document.getElementById("mClose").addEventListener("click", close);
     document.getElementById("mCancel").addEventListener("click", close);
 
+    const projectSpan = { startYear: p.startYear, startWeek: p.startWeek, endYear: p.endYear, endWeek: p.endWeek };
+    const assignState = buildInitialAssignState(p, editing, projectSpan);
+    const phaseState = editing ? App.getProjectPhases(p).map((ph) => Object.assign({}, ph)) : [];
+
     const employeeAssignList = document.getElementById("employeeAssignList");
-    if (employeeAssignList) bindEmployeeAssignRows(employeeAssignList);
+    if (employeeAssignList) renderEmployeeAssignList(employeeAssignList, employeeOptions, assignState, projectSpan);
+
+    const phaseList = document.getElementById("phaseList");
+    if (phaseList) renderPhaseList(phaseList, phaseState, projectSpan);
+    const addPhaseBtn = document.getElementById("btnAddPhase");
+    if (addPhaseBtn) addPhaseBtn.addEventListener("click", () => {
+      phaseState.push({ id: null, name: "", startYear: projectSpan.startYear, startWeek: projectSpan.startWeek, endYear: projectSpan.endYear, endWeek: projectSpan.endWeek });
+      renderPhaseList(phaseList, phaseState, projectSpan);
+    });
 
     document.querySelectorAll("#fColorPalette .color-swatch").forEach((sw) => {
       sw.addEventListener("click", () => {
@@ -287,7 +377,7 @@
     }
 
     document.getElementById("mSave").addEventListener("click", () => {
-      const assign = employeeAssignList ? readEmployeeAssignments(employeeAssignList) : { employeeIds: [], employeeRanges: {} };
+      const assign = readEmployeeAssignments(assignState);
       const data = {
         name: document.getElementById("fName").value.trim(),
         auftraggeber: document.getElementById("fAuftraggeber").value.trim(),
@@ -305,7 +395,8 @@
         notizen: document.getElementById("fNotizen").value.trim(),
         tags: readCheckboxGroup("fTags"),
         employeeIds: assign.employeeIds,
-        employeeRanges: assign.employeeRanges
+        assignmentPeriods: assign.assignmentPeriods,
+        phases: readPhases(phaseState)
       };
 
       const err = validateRange(data);

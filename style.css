@@ -726,7 +726,7 @@ tr.row-inactive{ opacity: 0.5; }
 /* ---------------- Mitarbeiter-Zuordnung im Projekt-Modal ---------------- */
 
 .employee-assign-list{
-  max-height: 260px;
+  max-height: 320px;
   overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -736,19 +736,35 @@ tr.row-inactive{ opacity: 0.5; }
   gap: 2px;
 }
 .employee-assign-row{
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
 }
 .employee-assign-row:hover{ background: var(--color-bg); }
+.employee-assign-header{ display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .employee-assign-check{ display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 220px; cursor: pointer; }
-.employee-assign-range-toggle{ display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--color-text-muted); cursor: pointer; white-space: nowrap; }
-.employee-assign-range{ display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap; }
-.employee-assign-range input{ width: 52px; padding: 4px 6px; border: 1px solid var(--color-border); border-radius: 6px; }
-.employee-assign-range input.ea-start-year, .employee-assign-range input.ea-end-year{ width: 68px; }
+.ea-vacation-warn{ font-size: 11.5px; color: var(--color-warning); font-weight: 600; white-space: nowrap; }
+.ea-implicit-hint{ font-size: 11.5px !important; padding-left: 2px; }
+.ea-periods{ display: flex; flex-direction: column; gap: 4px; margin-top: 6px; padding-left: 4px; }
+.ea-period-row, .phase-row{ display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap; }
+.ea-period-row input, .phase-row input[type="number"]{ width: 52px; padding: 4px 6px; border: 1px solid var(--color-border); border-radius: 6px; }
+.ea-period-row input.ea-start-year, .ea-period-row input.ea-end-year,
+.phase-row input.ph-start-year, .phase-row input.ph-end-year{ width: 68px; }
+.phase-row input.ph-name{ width: 140px; padding: 4px 6px; border: 1px solid var(--color-border); border-radius: 6px; }
+
+.btn-mini{
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+.btn-mini:hover{ background: var(--color-bg); color: var(--color-text); }
+.ea-remove-period, .ph-remove{ color: var(--color-danger); border-color: transparent; background: none; font-size: 15px; padding: 0 4px; line-height: 1; }
+.ea-remove-period:hover, .ph-remove:hover{ background: var(--color-danger-soft); }
+
+.phase-list{ display: flex; flex-direction: column; gap: 6px; }
 
 /* ---------------- Personaleinsatzplanung ---------------- */
 
@@ -758,17 +774,48 @@ tr.row-inactive{ opacity: 0.5; }
 .drag-handle{ cursor: grab; color: var(--color-text-faint); font-size: 13px; user-select: none; }
 .drag-handle:active{ cursor: grabbing; }
 .conflict-icon{ color: var(--color-danger); font-size: 12px; line-height: 1; }
+.vacation-icon{ font-size: 12px; line-height: 1; }
 .workload-badge{ font-size: 10.5px; color: var(--color-text-faint); margin-top: 1px; }
 
 .personal-row-dim{ opacity: 0.35; }
 .gantt-side-row.dragging-row{ opacity: 0.4; }
 .gantt-side-row.drop-target{ outline: 2px dashed var(--color-primary); outline-offset: -2px; }
+.gantt-side-row.row-conflict{ background: var(--color-danger-soft); }
 
 .personal-bar{ font-size: 11px; }
 .personal-bar-dim{ opacity: 0.22; }
 .personal-bar-highlight{ outline: 2px solid var(--color-primary-dark); outline-offset: 1px; box-shadow: var(--shadow-md); z-index: 6; }
 .personal-bar-conflict{ outline: 2px solid var(--color-danger); outline-offset: 1px; }
 .personal-bar-override{ border-bottom: 3px solid rgba(255,255,255,0.9); }
+.personal-bar-vacation-overlap{ outline: 2px dashed var(--color-warning); outline-offset: 1px; }
+
+.bar-vacation-overlay{
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,0.55), rgba(255,255,255,0.55) 4px, rgba(226,161,58,0.75) 4px, rgba(226,161,58,0.75) 8px);
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.vacation-bar{
+  background: var(--color-text-faint);
+  opacity: 0.85;
+  cursor: pointer;
+}
+.vacation-bar:hover{ opacity: 1; }
+.vacation-bar.vacation-conflict{ background: var(--color-warning); outline: 2px solid var(--color-danger); outline-offset: 1px; }
+
+.bar-conflict{ outline: 2px solid var(--color-danger); outline-offset: 1px; }
+.phase-tag{ background: var(--color-primary-soft); color: var(--color-primary-dark); }
+
+/* ---------------- Urlaubsplanung ---------------- */
+
+.urlaub-chip-list{ margin: 0; }
+.urlaub-chip-list li.urlaub-chip-conflict{ background: var(--color-warning-soft); border-color: var(--color-warning); }
+.urlaub-add-row{ display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 12.5px; color: var(--color-text-muted); }
+.urlaub-add-row input{ padding: 4px 6px; }
+tr.urlaub-row-flash{ background: var(--color-primary-soft); transition: background 1.8s ease; }
 
 /* ---------------- Import-Assistent ---------------- */
 

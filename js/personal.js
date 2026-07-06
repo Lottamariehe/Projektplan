@@ -49,16 +49,38 @@
   }
 
   /** Baut die Zeilenliste (ein Eintrag je sichtbarem Mitarbeiter) inkl.
-   *  Spurzuordnung (Stapelung bei gleichzeitigen Projekten) und kumulierter
-   *  vertikaler Position (da jede Zeile eine andere Höhe haben kann). */
+   *  Spurzuordnung (Stapelung bei gleichzeitigen Projekten/Einsatzabschnitten
+   *  UND Urlaub in einer eigenen Spurgruppe) und kumulierter vertikaler
+   *  Position (da jede Zeile eine andere Höhe haben kann). */
   function buildRows() {
     const data = App.getVisiblePersonalEmployees();
     let top = 0;
     return data.map(({ employee, assignments }) => {
       const withIdx = App.computeAssignmentConflicts(assignments);
-      const { rows: laneRows, laneCount } = App.assignLanes(withIdx);
-      const height = Math.max(MIN_ROW_HEIGHT, laneCount * LANE_HEIGHT + ROW_PADDING);
-      const row = { employee, laneRows, laneCount, height, top };
+      const assignLaneResult = App.assignLanes(withIdx);
+      const laneRows = assignLaneResult.rows;
+      const laneCount = withIdx.length ? assignLaneResult.laneCount : 0;
+
+      // Urlaub bekommt eigene Spuren UNTER den Projekt-Spuren, damit er auch
+      // sichtbar ist, wenn der Mitarbeiter gerade auf keinem Projekt eingeplant
+      // ist (Aufgabe "Urlaubsverwaltung": Urlaub soll immer deutlich erkennbar sein).
+      const vacationEntries = App.getVacationsForEmployee(employee.id).map((v) => ({ vacation: v, idx: App.getSpan(v) }));
+      const vacationLaneResult = App.assignLanes(vacationEntries);
+      const vacationLaneRows = vacationLaneResult.rows;
+      const vacationLaneCount = vacationEntries.length ? vacationLaneResult.laneCount : 0;
+      vacationLaneRows.forEach((vr) => {
+        vr.overlapsAssignment = laneRows.some((lr) => lr.idx.startIdx <= vr.idx.endIdx && vr.idx.startIdx <= lr.idx.endIdx);
+      });
+      // Jedem Projekteinsatz die überlappenden Urlaubszeiträume anhängen, damit
+      // der Balken die Unterbrechung visuell zeigen kann (Aufgabe "Projekte
+      // während des Urlaubs automatisch unterbrechen").
+      laneRows.forEach((lr) => {
+        lr.vacationOverlaps = App.getVacationOverlapsForSpan(employee.id, lr.span);
+      });
+
+      const totalLanes = laneCount + vacationLaneCount;
+      const height = Math.max(MIN_ROW_HEIGHT, totalLanes * LANE_HEIGHT + ROW_PADDING);
+      const row = { employee, laneRows, laneCount, vacationLaneRows, vacationLaneCount, height, top };
       top += height;
       return row;
     });
@@ -99,6 +121,9 @@
     rows.forEach((row) => {
       row.laneRows.forEach((entry) => {
         els.body.appendChild(buildBarEl(row, entry, colWidth));
+      });
+      row.vacationLaneRows.forEach((entry) => {
+        els.body.appendChild(buildVacationBarEl(row, entry, colWidth));
       });
     });
 
@@ -141,15 +166,19 @@
     }
 
     const occupied = computeOccupiedWeeks(row.laneRows);
-    const hasConflict = row.laneRows.some((r) => r.conflicts.length);
+    const hasDoubleBooking = row.laneRows.some((r) => r.conflicts.length);
+    const hasVacationConflict = row.laneRows.some((r) => r.vacationOverlaps && r.vacationOverlaps.length) || row.vacationLaneRows.some((r) => r.overlapsAssignment);
+    const hasConflict = hasDoubleBooking || hasVacationConflict;
     const highlightEmp = App.state.ui.personal.highlightEmployeeId;
     const dim = highlightEmp && highlightEmp !== e.id;
     const draggable = App.state.ui.personal.sort === "manuell";
+    const vacationCount = row.vacationLaneRows.length;
 
     return `<div class="gantt-side-row personal-side-row ${dim ? "personal-row-dim" : ""} ${isActive ? "" : "row-inactive"}" data-emp="${e.id}" style="height:${row.height}px;" ${draggable ? 'draggable="true"' : ""}>
       <div class="personal-side-top">
         ${draggable ? '<span class="drag-handle" title="Ziehen zum Sortieren">⠿</span>' : ""}
         <span class="p-name">${Util.escapeHtml(fullName)}</span>
+        ${vacationCount ? `<span class="vacation-icon" title="${vacationCount} Urlaubszeitraum/-zeiträume">🏖</span>` : ""}
         ${hasConflict ? '<span class="conflict-icon" title="Terminüberschneidung – siehe Balken">⚠</span>' : ""}
       </div>
       <span class="p-meta">${Util.escapeHtml(metaParts.join(" · "))}${detailParts.length ? " · " + Util.escapeHtml(detailParts.join(" · ")) : ""}</span>
@@ -180,12 +209,28 @@
     }
     if (entry.conflicts.length) bar.classList.add("personal-bar-conflict");
     if (entry.hasOverride) bar.classList.add("personal-bar-override");
+    if (entry.vacationOverlaps && entry.vacationOverlaps.length) bar.classList.add("personal-bar-vacation-overlap");
 
     const label = document.createElement("span");
     label.className = "bar-label";
     label.textContent = (entry.conflicts.length ? "⚠ " : "") + project.name;
     bar.appendChild(label);
     bar.title = buildBarTooltip(row.employee, entry);
+
+    // Urlaubsüberschneidungen werden als Unterbrechung direkt auf dem Balken
+    // sichtbar gemacht (Aufgabe "Projekte während des Urlaubs automatisch
+    // unterbrechen") - rein visuell, ohne den zugrunde liegenden Einsatz-
+    // zeitraum in der Datenbank zu verändern.
+    (entry.vacationOverlaps || []).forEach((ov) => {
+      const localLeft = (ov.startIdx - entry.idx.startIdx) * colWidth;
+      const localWidth = (ov.endIdx - ov.startIdx + 1) * colWidth;
+      const overlay = document.createElement("div");
+      overlay.className = "bar-vacation-overlay";
+      overlay.style.left = localLeft + "px";
+      overlay.style.width = localWidth + "px";
+      overlay.title = "Urlaub: KW " + ov.vacation.startWeek + "/" + ov.vacation.startYear + " – KW " + ov.vacation.endWeek + "/" + ov.vacation.endYear;
+      bar.appendChild(overlay);
+    });
 
     const leftHandle = document.createElement("div");
     leftHandle.className = "resize-handle left";
@@ -194,11 +239,11 @@
     bar.appendChild(leftHandle);
     bar.appendChild(rightHandle);
 
-    leftHandle.addEventListener("mousedown", (e) => startBarDrag(e, row.employee.id, project, entry, "resize-left"));
-    rightHandle.addEventListener("mousedown", (e) => startBarDrag(e, row.employee.id, project, entry, "resize-right"));
+    leftHandle.addEventListener("mousedown", (e) => startBarDrag(e, row.employee.id, project, entry, "resize-left", bar));
+    rightHandle.addEventListener("mousedown", (e) => startBarDrag(e, row.employee.id, project, entry, "resize-right", bar));
     bar.addEventListener("mousedown", (e) => {
       if (e.target === leftHandle || e.target === rightHandle) return;
-      startBarDrag(e, row.employee.id, project, entry, "move");
+      startBarDrag(e, row.employee.id, project, entry, "move", bar);
     });
     bar.addEventListener("click", (e) => {
       if (dragBarState && dragBarState.moved) { e.stopPropagation(); return; }
@@ -213,24 +258,72 @@
     return bar;
   }
 
+  /** Baut den Balken für einen Urlaubszeitraum (eigene Spur je Mitarbeiter,
+   *  siehe buildRows). Nicht per Maus verschiebbar - Bearbeitung erfolgt in
+   *  der Urlaubsplanung, ein Klick springt dorthin. */
+  function buildVacationBarEl(row, entry, colWidth) {
+    const v = entry.vacation;
+    const bar = document.createElement("div");
+    bar.className = "gantt-bar personal-bar vacation-bar" + (entry.overlapsAssignment ? " vacation-conflict" : "");
+    bar.dataset.vacationId = v.id;
+
+    const top = row.top + (row.laneCount + entry.lane) * LANE_HEIGHT + 4;
+    bar.style.top = top + "px";
+    bar.style.height = (LANE_HEIGHT - 6) + "px";
+    bar.style.left = (entry.idx.startIdx * colWidth) + "px";
+    bar.style.width = Math.max(colWidth - 3, (entry.idx.endIdx - entry.idx.startIdx + 1) * colWidth - 3) + "px";
+
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = "Urlaub" + (v.bemerkung ? " – " + v.bemerkung : "");
+    bar.appendChild(label);
+
+    const fullName = (row.employee.vorname + " " + row.employee.nachname).trim();
+    bar.title = `Urlaub: ${fullName}\nZeitraum: KW ${v.startWeek}/${v.startYear} – KW ${v.endWeek}/${v.endYear}`
+      + (v.bemerkung ? `\nBemerkung: ${v.bemerkung}` : "")
+      + (entry.overlapsAssignment ? "\n⚠ überschneidet sich mit einem Projekteinsatz" : "")
+      + "\n\nKlick: in der Urlaubsplanung öffnen";
+
+    bar.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const navBtn = document.querySelector('.nav-btn[data-view="urlaub"]');
+      if (navBtn) navBtn.click();
+      if (global.Urlaub && global.Urlaub.highlightEmployee) global.Urlaub.highlightEmployee(row.employee.id);
+    });
+
+    return bar;
+  }
+
   function buildBarTooltip(employee, entry) {
     const p = entry.project;
     const s = entry.span;
+    const weeksCount = entry.idx ? (entry.idx.endIdx - entry.idx.startIdx + 1) : App.getSpan(s).endIdx - App.getSpan(s).startIdx + 1;
+    const tagsLine = Array.isArray(p.tags) && p.tags.length ? `\nTags: ${p.tags.join(", ")}` : "";
     let t = `${p.name}\nMitarbeiter: ${(employee.vorname + " " + employee.nachname).trim()}`
-      + `\nZeitraum: KW ${s.startWeek}/${s.startYear} – KW ${s.endWeek}/${s.endYear}${entry.hasOverride ? " (individueller Zeitraum)" : " (gesamte Projektlaufzeit)"}`
+      + `\nAuftraggeber: ${p.auftraggeber || "–"}`
+      + `\nZeitraum: KW ${s.startWeek}/${s.startYear} – KW ${s.endWeek}/${s.endYear}${entry.hasOverride ? " (eigener Einsatzabschnitt)" : " (gesamte Projektlaufzeit)"}`
+      + `\nDauer: ${weeksCount} KW`
       + `\nProjektleiter: ${p.projektleiter || "–"} · Obermonteur: ${p.obermonteur || "–"}`
-      + `\nStatus: ${p.status}`;
+      + `\nStatus: ${p.status}${tagsLine}`;
     if (entry.conflicts.length) t += `\n⚠ Terminüberschneidung mit: ${entry.conflicts.map((c) => c.name).join(", ")}`;
-    t += "\n\nKlick: hervorheben · Doppelklick: bearbeiten · Ziehen: individuellen Zeitraum anpassen";
+    if (entry.vacationOverlaps && entry.vacationOverlaps.length) {
+      t += `\n⚠ Unterbrochen durch Urlaub: ` + entry.vacationOverlaps.map((ov) =>
+        `KW ${App.state.ui.weeks[ov.startIdx].week}/${App.state.ui.weeks[ov.startIdx].year} – KW ${App.state.ui.weeks[ov.endIdx].week}/${App.state.ui.weeks[ov.endIdx].year}`
+      ).join(", ");
+    }
+    t += "\n\nKlick: hervorheben · Doppelklick: bearbeiten · Ziehen: Einsatzabschnitt anpassen";
     return t;
   }
 
   function updateConflictBanner(rows) {
     if (!els.banner) return;
-    const conflicted = rows.filter((r) => r.laneRows.some((lr) => lr.conflicts.length));
+    const conflicted = rows.filter((r) =>
+      r.laneRows.some((lr) => lr.conflicts.length || (lr.vacationOverlaps && lr.vacationOverlaps.length)) ||
+      r.vacationLaneRows.some((vr) => vr.overlapsAssignment)
+    );
     if (conflicted.length) {
       els.banner.className = "capacity-warning critical";
-      els.banner.textContent = "Terminüberschneidung bei " + conflicted.length + " Mitarbeiter(n): "
+      els.banner.textContent = "Terminüberschneidung/Urlaubskollision bei " + conflicted.length + " Mitarbeiter(n): "
         + conflicted.map((r) => (r.employee.vorname + " " + r.employee.nachname).trim()).join(", ");
       els.banner.classList.remove("hidden");
     } else {
@@ -306,7 +399,7 @@
      sondern hinterlegt/aktualisiert einen individuellen Einsatzzeitraum
      dieses Mitarbeiters innerhalb der bestehenden Projektlaufzeit. */
 
-  function startBarDrag(e, employeeId, project, entry, mode) {
+  function startBarDrag(e, employeeId, project, entry, mode, barEl) {
     e.preventDefault();
     e.stopPropagation();
     const colWidth = App.getColWidth();
@@ -319,15 +412,11 @@
       newEndIdx: entry.idx.endIdx,
       colWidth,
       moved: false,
-      barEl: document.querySelector(`.personal-bar[data-project-id="${cssEscape(project.id)}"][data-emp-id="${cssEscape(employeeId)}"]`)
+      barEl: barEl || null
     };
     if (dragBarState.barEl) dragBarState.barEl.classList.add("dragging");
     document.addEventListener("mousemove", onBarDragMove);
     document.addEventListener("mouseup", onBarDragEnd);
-  }
-
-  function cssEscape(value) {
-    return String(value).replace(/["\\]/g, "\\$&");
   }
 
   function onBarDragMove(e) {
@@ -372,17 +461,30 @@
       const endWeek = weeks[dragBarState.newEndIdx];
       const project = dragBarState.project;
       const employeeId = dragBarState.employeeId;
+      const periodId = dragBarState.entry.periodId;
+      const newSpan = { startYear: startWeek.year, startWeek: startWeek.week, endYear: endWeek.year, endWeek: endWeek.week };
 
-      const employeeRanges = {};
-      (project.employeeAssignments || []).forEach((a) => {
-        if (a.startYear && a.startWeek && a.endYear && a.endWeek) {
-          employeeRanges[a.employeeId] = { startYear: a.startYear, startWeek: a.startWeek, endYear: a.endYear, endWeek: a.endWeek };
-        }
+      // Nur DIESER Einsatzabschnitt wird verändert - alle anderen Abschnitte
+      // (auch andere Abschnitte desselben Mitarbeiters auf demselben Projekt)
+      // bleiben unangetastet.
+      const assignmentPeriods = {};
+      Object.keys(project.assignmentPeriods || {}).forEach((empId) => {
+        assignmentPeriods[empId] = (project.assignmentPeriods[empId] || []).map((p) => Object.assign({}, p));
       });
-      employeeRanges[employeeId] = { startYear: startWeek.year, startWeek: startWeek.week, endYear: endWeek.year, endWeek: endWeek.week };
+      const list = assignmentPeriods[employeeId] ? assignmentPeriods[employeeId].slice() : [];
+      if (periodId) {
+        const idx = list.findIndex((p) => p.id === periodId);
+        if (idx >= 0) list[idx] = Object.assign({}, list[idx], newSpan);
+        else list.push(Object.assign({ id: null }, newSpan));
+      } else {
+        // Bisher galt die gesamte Projektlaufzeit (kein eigener Abschnitt) -
+        // durch das Ziehen entsteht jetzt der erste eigene Einsatzabschnitt.
+        list.push(Object.assign({ id: null }, newSpan));
+      }
+      assignmentPeriods[employeeId] = list;
 
-      App.updateProject(project.id, { employeeIds: (project.employeeIds || []).slice(), employeeRanges });
-      Toast.show("Individueller Einsatzzeitraum aktualisiert.");
+      App.updateProject(project.id, { employeeIds: (project.employeeIds || []).slice(), assignmentPeriods });
+      Toast.show("Einsatzabschnitt aktualisiert.");
     } else {
       render();
     }

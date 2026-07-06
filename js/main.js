@@ -46,6 +46,12 @@
     fillSelect(document.getElementById("filterAusschreibungGewerk"), Storage.TENDER_GEWERKE, App.state.ui.tenderFilters.gewerk);
     const zustList = Array.from(new Set(App.state.tenders.map((t) => t.zustaendigIntern).filter(Boolean)));
     fillSelect(document.getElementById("filterAusschreibungZustaendig"), zustList, App.state.ui.tenderFilters.zustaendig);
+
+    const sortSel = document.getElementById("plannerSort");
+    if (sortSel && !sortSel.options.length) {
+      sortSel.innerHTML = Storage.PLANNER_SORT_MODES.map((m) => `<option value="${m.value}">${m.label}</option>`).join("");
+    }
+    if (sortSel) sortSel.value = App.state.ui.plannerSort;
   }
 
   function renderAll() {
@@ -56,6 +62,7 @@
     if (App.state.ui.view === "settings") renderSettingsView();
     if (App.state.ui.view === "mitarbeiter") Employees.render();
     if (App.state.ui.view === "personal") Personal.render();
+    if (App.state.ui.view === "urlaub") Urlaub.render();
   }
 
   /* ---------------- Navigation ---------------- */
@@ -68,6 +75,7 @@
     if (view === "mitarbeiter") Employees.render();
     if (view === "planner") setTimeout(() => Gantt.render(), 0);
     if (view === "personal") setTimeout(() => Personal.render(), 0);
+    if (view === "urlaub") Urlaub.render();
   }
 
   /* ---------------- Einstellungen ---------------- */
@@ -282,6 +290,9 @@
       App.state.ui.filters.showTenderPreview = e.target.checked;
       App.emit("change");
     });
+    document.getElementById("plannerSort").addEventListener("change", (e) => {
+      App.setPlannerSort(e.target.value);
+    });
     document.getElementById("toggleShowMitarbeiter").addEventListener("change", (e) => {
       App.state.ui.filters.showMitarbeiter = e.target.checked;
       Capacity.render();
@@ -383,6 +394,7 @@
     bindScrollSync();
     Employees.bindToolbar();
     Personal.bindToolbar();
+    Urlaub.bindToolbar();
 
     document.getElementById("yearLabel").textContent = new Date().getFullYear();
     document.getElementById("yearLabelPersonal").textContent = new Date().getFullYear();

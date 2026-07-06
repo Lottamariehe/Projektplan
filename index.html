@@ -22,6 +22,7 @@
       <button class="nav-btn" data-view="ausschreibungen">Ausschreibungen</button>
       <button class="nav-btn" data-view="personal">Personaleinsatzplanung</button>
       <button class="nav-btn" data-view="mitarbeiter">Mitarbeiter</button>
+      <button class="nav-btn" data-view="urlaub">Urlaubsplanung</button>
       <button class="nav-btn" data-view="settings">Einstellungen</button>
     </nav>
     <div class="topbar-actions">
@@ -70,12 +71,17 @@
           </label>
         </div>
         <div class="toolbar-group">
+          <span class="toolbar-label">Sortierung</span>
+          <select id="plannerSort" class="select-input" style="min-width:170px;"></select>
+        </div>
+        <div class="toolbar-group">
           <button class="btn btn-ghost" id="btnExportProjects">Export</button>
           <button class="btn btn-ghost" id="btnPrintPlanner">Drucken / PDF</button>
         </div>
       </div>
 
       <div id="capacityWarning" class="capacity-warning hidden"></div>
+      <div id="obermonteurWarning" class="capacity-warning hidden"></div>
 
       <div class="gantt-wrapper">
         <div class="gantt-scroll" id="ganttScroll">
@@ -226,6 +232,27 @@
       <datalist id="dlBeschaeftigung"></datalist>
     </section>
 
+    <!-- ================= URLAUBSPLANUNG ================= -->
+    <section id="view-urlaub" class="view">
+      <div class="toolbar">
+        <div class="toolbar-group filter-group">
+          <input type="search" id="urlaubSearch" class="select-input" placeholder="Mitarbeiter suchen ...">
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table" id="urlaubTable" style="min-width:0;">
+          <thead>
+            <tr>
+              <th style="width:200px;">Mitarbeiter</th>
+              <th>Urlaubszeiträume</th>
+              <th style="width:420px;">Neuer Zeitraum</th>
+            </tr>
+          </thead>
+          <tbody id="urlaubBody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- ================= EINSTELLUNGEN ================= -->
     <section id="view-settings" class="view">
       <div class="settings-grid">
@@ -329,6 +356,7 @@
 <script src="js/capacity.js"></script>
 <script src="js/ausschreibungen.js"></script>
 <script src="js/employees.js"></script>
+<script src="js/urlaub.js"></script>
 <script src="js/personal.js"></script>
 <script src="js/modals.js"></script>
 <script src="js/importwizard.js"></script>

@@ -90,8 +90,17 @@ CREATE TABLE IF NOT EXISTS employees (
 );
 
 -- Zuordnung Projekt <-> Mitarbeiter (Mehrfachauswahl in beide Richtungen).
--- startYear/startWeek/endYear/endWeek: optionaler individueller Zeitraum
--- innerhalb der Projektlaufzeit (NULL = gesamte Projektlaufzeit, Standardfall).
+-- Diese Tabelle beantwortet nur die Frage "ist Mitarbeiter X grundsätzlich
+-- diesem Projekt zugeordnet?". Die eigentlichen Einsatzzeiträume (einer oder
+-- mehrere je Mitarbeiter) stehen in assignment_periods (s. u.), damit ein
+-- Mitarbeiter beliebig viele getrennte Einsatzabschnitte je Projekt haben
+-- kann. Die Altspalten startYear/startWeek/endYear/endWeek sind seit der
+-- Erweiterung um Mehrfach-Einsatzzeiträume NICHT mehr die Datenquelle
+-- (siehe migration_003_urlaub_einsatzabschnitte_bauabschnitte.sql) und
+-- bleiben nur aus Kompatibilitätsgründen erhalten (werden von der App nicht
+-- mehr gelesen). Hat ein Mitarbeiter KEINE Zeilen in assignment_periods für
+-- dieses Projekt, gilt er automatisch für die gesamte Projektlaufzeit als
+-- eingeplant (Standardfall, keine Zusatzeingabe nötig).
 CREATE TABLE IF NOT EXISTS project_employees (
   projectId  TEXT NOT NULL,
   employeeId TEXT NOT NULL,
@@ -100,6 +109,68 @@ CREATE TABLE IF NOT EXISTS project_employees (
   endYear    INTEGER,
   endWeek    INTEGER,
   PRIMARY KEY (projectId, employeeId)
+);
+
+-- ---------------------------------------------------------
+-- Einsatzabschnitte: beliebig viele Zeiträume je Mitarbeiter
+-- UND Projekt (z. B. Mitarbeiter arbeitet KW15-18 und erneut
+-- KW22-26 auf demselben Projekt). Jede Zeile ist ein einzelner,
+-- eigenständig bearbeit- und verschiebbarer Balken in der
+-- Personaleinsatzplanung.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS assignment_periods (
+  id         TEXT PRIMARY KEY,
+  projectId  TEXT NOT NULL,
+  employeeId TEXT NOT NULL,
+  startYear  INTEGER NOT NULL,
+  startWeek  INTEGER NOT NULL,
+  endYear    INTEGER NOT NULL,
+  endWeek    INTEGER NOT NULL,
+  createdAt  TEXT,
+  updatedAt  TEXT
+);
+
+-- ---------------------------------------------------------
+-- Bauabschnitte: beliebig viele getrennte Zeiträume je Projekt
+-- (z. B. Bauunterbrechung). Ein Projekt OHNE Bauabschnitte wird
+-- weiterhin als ein einziger Balken über projects.startYear ...
+-- endWeek dargestellt (Standardfall, keine Zusatzeingabe nötig).
+-- Sobald Bauabschnitte hinterlegt sind, ersetzen sie die
+-- Darstellung im Projektplaner (mehrere Balken) UND die
+-- Kapazitätsberechnung erfolgt dann nur innerhalb dieser
+-- Zeiträume.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS project_phases (
+  id        TEXT PRIMARY KEY,
+  projectId TEXT NOT NULL,
+  name      TEXT,
+  startYear INTEGER NOT NULL,
+  startWeek INTEGER NOT NULL,
+  endYear   INTEGER NOT NULL,
+  endWeek   INTEGER NOT NULL,
+  sortOrder INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT,
+  updatedAt TEXT
+);
+
+-- ---------------------------------------------------------
+-- Urlaub je Mitarbeiter. Wirkt sich automatisch auf die
+-- Personaleinsatzplanung aus (Mitarbeiter gilt im Zeitraum als
+-- nicht verfügbar, Projekteinsätze werden für die Anzeige um
+-- den Urlaubszeitraum unterbrochen) - berechnet zur Laufzeit
+-- aus assignment_periods + vacations, es werden dafür KEINE
+-- zusätzlichen/abgeleiteten Zeilen gespeichert.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS vacations (
+  id         TEXT PRIMARY KEY,
+  employeeId TEXT NOT NULL,
+  startYear  INTEGER NOT NULL,
+  startWeek  INTEGER NOT NULL,
+  endYear    INTEGER NOT NULL,
+  endWeek    INTEGER NOT NULL,
+  bemerkung  TEXT,
+  createdAt  TEXT,
+  updatedAt  TEXT
 );
 
 -- ---------------------------------------------------------
@@ -159,3 +230,7 @@ CREATE INDEX IF NOT EXISTS idx_tender_gewerke_gewerk ON tender_gewerke (gewerk);
 CREATE INDEX IF NOT EXISTS idx_employees_aktiv ON employees (aktiv);
 CREATE INDEX IF NOT EXISTS idx_employees_sortorder ON employees (sortOrder);
 CREATE INDEX IF NOT EXISTS idx_employees_team ON employees (team);
+CREATE INDEX IF NOT EXISTS idx_assignment_periods_project ON assignment_periods (projectId);
+CREATE INDEX IF NOT EXISTS idx_assignment_periods_employee ON assignment_periods (employeeId, startYear, startWeek, endYear, endWeek);
+CREATE INDEX IF NOT EXISTS idx_project_phases_project ON project_phases (projectId, sortOrder);
+CREATE INDEX IF NOT EXISTS idx_vacations_employee ON vacations (employeeId, startYear, startWeek, endYear, endWeek);

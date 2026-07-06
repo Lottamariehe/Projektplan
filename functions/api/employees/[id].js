@@ -50,6 +50,8 @@ export async function onRequestDelete(context) {
   try {
     await db.batch([
       db.prepare("DELETE FROM project_employees WHERE employeeId = ?").bind(id),
+      db.prepare("DELETE FROM assignment_periods WHERE employeeId = ?").bind(id),
+      db.prepare("DELETE FROM vacations WHERE employeeId = ?").bind(id),
       db.prepare("DELETE FROM employees WHERE id = ?").bind(id)
     ]);
     return json({ ok: true });

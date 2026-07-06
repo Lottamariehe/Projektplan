@@ -33,6 +33,8 @@ export async function onRequestPost(context) {
   try {
     const statements = [
       db.prepare("DELETE FROM project_employees"),
+      db.prepare("DELETE FROM assignment_periods"),
+      db.prepare("DELETE FROM project_phases"),
       db.prepare("DELETE FROM project_tags"),
       db.prepare("DELETE FROM tender_gewerke"),
       db.prepare("DELETE FROM projects"),
@@ -41,6 +43,7 @@ export async function onRequestPost(context) {
 
     if (mode === "fullReset") {
       statements.push(db.prepare("DELETE FROM employees"));
+      statements.push(db.prepare("DELETE FROM vacations"));
       statements.push(db.prepare("DELETE FROM portals"));
       statements.push(db.prepare("DELETE FROM settings"));
     }

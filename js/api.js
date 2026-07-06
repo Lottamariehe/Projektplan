@@ -109,6 +109,20 @@
     return request("/import", { method: "POST", body: JSON.stringify(payload) });
   }
 
+  /* ---------------- Urlaub ---------------- */
+  function getVacations() {
+    return request("/vacations", { method: "GET" });
+  }
+  function createVacation(vacation) {
+    return request("/vacations", { method: "POST", body: JSON.stringify(vacation) });
+  }
+  function updateVacation(id, data) {
+    return request("/vacations/" + encodeURIComponent(id), { method: "PUT", body: JSON.stringify(data) });
+  }
+  function deleteVacation(id) {
+    return request("/vacations/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
   global.Api = {
     bootstrap,
     createProject, updateProject, deleteProject,
@@ -118,6 +132,7 @@
     getEmployees, createEmployee, updateEmployee, deleteEmployee, reorderEmployees,
     getPortals, createPortal, updatePortal, deletePortal,
     getAdminConfig, updateAdminConfig, adminReset,
-    runImport
+    runImport,
+    getVacations, createVacation, updateVacation, deleteVacation
   };
 })(window);

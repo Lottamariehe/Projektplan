@@ -17,6 +17,7 @@
 
   const ZOOM_COL_WIDTH = { month: 110, quarter: 60, half: 34, year: 20 };
   const TENDER_PREVIEW_STATUSES = ["In Bearbeitung", "Angebot abgegeben", "Auftrag erhalten"];
+  const PLANNER_SORT_KEY = "shk_baustellenplaner_planner_sort_v1";
 
   const App = {
     state: {
@@ -24,6 +25,7 @@
       tenders: [],
       employees: [],
       portals: [],
+      vacations: [],
       settings: null,
       ui: {
         view: "planner",
@@ -35,6 +37,7 @@
         tenderFilters: { status: "", zustaendig: "", gewerk: "" },
         search: "",
         tenderSort: { key: "submissionDatum", dir: "asc" },
+        plannerSort: "alpha",
         personal: {
           sort: "alpha",
           showDetails: false,
@@ -68,6 +71,7 @@
         this.state.tenders = backendData.tenders || [];
         this.state.employees = backendData.employees || [];
         this.state.portals = backendData.portals || [];
+        this.state.vacations = backendData.vacations || [];
         this.state.settings = Object.assign(Storage.defaultSettings(), backendData.settings || {});
       } else {
         // Kein Backend erreichbar -> lokaler Zwischenspeicher (ohne Demo-/Testdaten).
@@ -77,12 +81,14 @@
           this.state.tenders = raw.tenders;
           this.state.employees = raw.employees || [];
           this.state.portals = raw.portals || [];
+          this.state.vacations = raw.vacations || [];
           this.state.settings = Object.assign(Storage.defaultSettings(), raw.settings || {});
         } else {
           this.state.projects = [];
           this.state.tenders = [];
           this.state.employees = [];
           this.state.portals = [];
+          this.state.vacations = [];
           this.state.settings = Storage.defaultSettings();
           this._localSaveAllNow();
         }
@@ -91,7 +97,23 @@
         this.isAdmin = true;
       }
 
+      // Sortierung des Projektplaners wird geräteweise gemerkt (unabhängig
+      // vom Backend-Modus, da rein UI-seitige Präferenz - siehe Aufgabe
+      // "Projektplan sortieren").
+      try {
+        this.state.ui.plannerSort = localStorage.getItem(PLANNER_SORT_KEY) || "alpha";
+      } catch (e) {
+        this.state.ui.plannerSort = "alpha";
+      }
+
       this.generateWeeks();
+    },
+
+    /** Setzt und merkt die Sortierung der Projektübersicht (siehe Toolbar im Projektplaner). */
+    setPlannerSort(mode) {
+      this.state.ui.plannerSort = mode;
+      try { localStorage.setItem(PLANNER_SORT_KEY, mode); } catch (e) { /* ignore */ }
+      this.emit("change");
     },
 
     /** Kritische Aktion: alle Projekte & Ausschreibungen löschen (nur Admin). */
@@ -130,6 +152,7 @@
       this.state.tenders = [];
       this.state.employees = [];
       this.state.portals = [];
+      this.state.vacations = [];
       this.state.settings = Storage.defaultSettings();
       if (!this.backendMode) this._localSaveAllNow();
       this.emit("change");
@@ -166,6 +189,7 @@
         tenders: this.state.tenders,
         employees: this.state.employees,
         portals: this.state.portals,
+        vacations: this.state.vacations,
         settings: this.state.settings
       });
     },
@@ -256,29 +280,16 @@
     },
 
     /* ---------------- Projekte: CRUD ---------------- */
-
-    /** Baut aus employeeIds + employeeRanges das lokale employeeAssignments-Feld
-     *  (Spiegelbild dessen, was der Server aus project_employees zurückliefert),
-     *  damit Änderungen sofort sichtbar sind, ohne auf einen Reload zu warten. */
-    _rebuildEmployeeAssignments(project, data) {
-      if (!Array.isArray(data.employeeIds)) return;
-      const ranges = data.employeeRanges && typeof data.employeeRanges === "object" ? data.employeeRanges : {};
-      project.employeeAssignments = data.employeeIds.map((empId) => {
-        const r = ranges[empId];
-        return {
-          employeeId: empId,
-          startYear: (r && r.startYear) || null,
-          startWeek: (r && r.startWeek) || null,
-          endYear: (r && r.endYear) || null,
-          endWeek: (r && r.endWeek) || null
-        };
-      });
-    },
+    /* data.assignmentPeriods: { [employeeId]: [{id,startYear,startWeek,endYear,endWeek}, ...] }
+       – beliebig viele Einsatzabschnitte je Mitarbeiter (leer/fehlend = gesamte
+       Projektlaufzeit). data.phases: [{id,name,startYear,startWeek,endYear,endWeek,sortOrder}]
+       – beliebig viele Bauabschnitte (leer/fehlend = ein Balken über die gesamte
+       Laufzeit). Beide Felder werden 1:1 übernommen und an das Backend
+       weitergereicht, es gibt keine separate Spiegel-Datenhaltung. */
 
     addProject(data) {
       const now = new Date().toISOString();
-      const project = Object.assign({ id: Util.uid("proj"), createdAt: now, updatedAt: now }, data);
-      this._rebuildEmployeeAssignments(project, data);
+      const project = Object.assign({ id: Util.uid("proj"), createdAt: now, updatedAt: now, assignmentPeriods: {}, phases: [] }, data);
       this.state.projects.push(project);
       this._persist(() => this.backendMode ? Api.createProject(project) : this._localSaveAllDebounced());
       this.emit("change");
@@ -289,7 +300,6 @@
       const p = this.state.projects.find((x) => x.id === id);
       if (!p) return null;
       Object.assign(p, data, { updatedAt: new Date().toISOString() });
-      this._rebuildEmployeeAssignments(p, data);
       this._persist(() => this.backendMode ? Api.updateProject(id, p) : this._localSaveAllDebounced());
       this.emit("change");
       return p;
@@ -329,7 +339,9 @@
       this.state.employees = this.state.employees.filter((x) => x.id !== id);
       this.state.projects.forEach((p) => {
         if (Array.isArray(p.employeeIds)) p.employeeIds = p.employeeIds.filter((eid) => eid !== id);
+        if (p.assignmentPeriods && typeof p.assignmentPeriods === "object") delete p.assignmentPeriods[id];
       });
+      this.state.vacations = this.state.vacations.filter((v) => v.employeeId !== id);
       this._persist(() => this.backendMode ? Api.deleteEmployee(id) : this._localSaveAllDebounced());
       this.emit("change");
     },
@@ -461,7 +473,7 @@
     getVisibleProjects() {
       const f = this.state.ui.filters;
       const search = this.state.ui.search.trim().toLowerCase();
-      return this.state.projects.filter((p) => {
+      const list = this.state.projects.filter((p) => {
         if (f.status && p.status !== f.status) return false;
         if (f.leiter && p.projektleiter !== f.leiter) return false;
         if (f.tag && !(Array.isArray(p.tags) && p.tags.includes(f.tag))) return false;
@@ -472,6 +484,24 @@
         }
         return true;
       });
+      return this.sortProjects(list);
+    },
+
+    /** Sortiert eine Projektliste gemäß der aktuell gewählten (gemerkten)
+     *  Sortierung der Projektübersicht (siehe setPlannerSort). */
+    sortProjects(list) {
+      const mode = this.state.ui.plannerSort || "alpha";
+      const comparators = {
+        alpha: (a, b) => (a.name || "").localeCompare(b.name || "", "de"),
+        start: (a, b) => Util.compareWeeks({ year: a.startYear, week: a.startWeek }, { year: b.startYear, week: b.startWeek }),
+        end: (a, b) => Util.compareWeeks({ year: a.endYear, week: a.endWeek }, { year: b.endYear, week: b.endWeek }),
+        auftraggeber: (a, b) => (a.auftraggeber || "").localeCompare(b.auftraggeber || "", "de"),
+        leiter: (a, b) => (a.projektleiter || "").localeCompare(b.projektleiter || "", "de"),
+        ober: (a, b) => (a.obermonteur || "").localeCompare(b.obermonteur || "", "de"),
+        status: (a, b) => (a.status || "").localeCompare(b.status || "", "de")
+      };
+      const cmp = comparators[mode] || comparators.alpha;
+      return list.slice().sort((a, b) => cmp(a, b) || (a.name || "").localeCompare(b.name || "", "de"));
     },
 
     getVisibleTendersForPlanner() {
@@ -548,49 +578,66 @@
     },
 
     /* ---------------- Personaleinsatzplanung ---------------- */
-    /* Alle Daten hier werden ausschließlich aus projects + project_employees
-       abgeleitet -- es gibt keine doppelte Datenhaltung. Ein verschobenes/
-       verlängertes Projekt im Projektplaner wirkt sich automatisch auf diese
-       Ansicht aus (und umgekehrt), weil beide Ansichten dieselben Objekte lesen. */
+    /* Alle Daten hier werden ausschließlich aus projects + project_employees +
+       assignment_periods + vacations abgeleitet -- es gibt keine doppelte
+       Datenhaltung. Ein verschobenes/verlängertes Projekt im Projektplaner
+       wirkt sich automatisch auf diese Ansicht aus (und umgekehrt), weil beide
+       Ansichten dieselben Objekte lesen. Urlaub wird zur Laufzeit über die
+       Einsatzzeiträume gelegt (Unterbrechung/"nicht verfügbar") - auch das
+       erzeugt keine zusätzlichen gespeicherten Zeilen. */
 
-    /** Effektiver Zeitraum eines Mitarbeiters innerhalb eines Projekts:
-     *  der individuelle Zeitraum (falls hinterlegt), sonst die gesamte Projektlaufzeit. */
-    getEmployeeAssignmentSpan(project, employeeId) {
-      const list = Array.isArray(project.employeeAssignments) ? project.employeeAssignments : [];
-      const a = list.find((x) => x.employeeId === employeeId);
-      if (a && a.startYear && a.startWeek && a.endYear && a.endWeek) {
-        return { startYear: a.startYear, startWeek: a.startWeek, endYear: a.endYear, endWeek: a.endWeek };
+    /** Beliebig viele Einsatzabschnitte eines Mitarbeiters innerhalb eines Projekts.
+     *  Ohne explizite Abschnitte gilt der Mitarbeiter automatisch für die gesamte
+     *  Projektlaufzeit als eingeplant (ein impliziter Abschnitt, Standardfall). */
+    getEmployeeAssignmentPeriods(project, employeeId) {
+      const map = project.assignmentPeriods && typeof project.assignmentPeriods === "object" ? project.assignmentPeriods : {};
+      const list = Array.isArray(map[employeeId]) ? map[employeeId] : [];
+      const valid = list.filter((p) => p && p.startYear && p.startWeek && p.endYear && p.endWeek);
+      if (valid.length) {
+        return valid.map((p) => ({
+          id: p.id || null, startYear: p.startYear, startWeek: p.startWeek, endYear: p.endYear, endWeek: p.endWeek, implicit: false
+        })).sort((a, b) => Util.compareWeeks({ year: a.startYear, week: a.startWeek }, { year: b.startYear, week: b.startWeek }));
       }
-      return { startYear: project.startYear, startWeek: project.startWeek, endYear: project.endYear, endWeek: project.endWeek };
+      return [{
+        id: null, startYear: project.startYear, startWeek: project.startWeek, endYear: project.endYear, endWeek: project.endWeek, implicit: true
+      }];
     },
 
-    /** Individuellen Zeitraum eines Mitarbeiters in einem Projekt lesen (roh, ohne Fallback). */
+    /** Kompatibilitäts-Hilfsfunktion: true, wenn mindestens ein expliziter (vom
+     *  gesamten Projektzeitraum abweichender) Einsatzabschnitt hinterlegt ist. */
     getEmployeeRangeOverride(project, employeeId) {
-      const list = Array.isArray(project.employeeAssignments) ? project.employeeAssignments : [];
-      const a = list.find((x) => x.employeeId === employeeId);
-      if (a && a.startYear && a.startWeek && a.endYear && a.endWeek) {
-        return { startYear: a.startYear, startWeek: a.startWeek, endYear: a.endYear, endWeek: a.endWeek };
-      }
-      return null;
+      const periods = this.getEmployeeAssignmentPeriods(project, employeeId);
+      return periods.length && !periods[0].implicit ? periods : null;
     },
 
-    /** Alle Projekteinsätze eines Mitarbeiters (unsortiert nach Filtern, nur die Rohdaten). */
+    /** Alle Projekteinsätze eines Mitarbeiters, ein Eintrag je Einsatzabschnitt
+     *  (ein Mitarbeiter kann also mehrfach für dasselbe Projekt auftauchen,
+     *  wenn er dort mehrere getrennte Einsatzabschnitte hat). */
     getEmployeeAssignments(employeeId) {
-      return this.state.projects
-        .filter((p) => Array.isArray(p.employeeIds) && p.employeeIds.includes(employeeId))
-        .map((p) => ({
-          project: p,
-          span: this.getEmployeeAssignmentSpan(p, employeeId),
-          hasOverride: !!this.getEmployeeRangeOverride(p, employeeId)
-        }));
+      const rows = [];
+      this.state.projects.forEach((p) => {
+        if (!Array.isArray(p.employeeIds) || !p.employeeIds.includes(employeeId)) return;
+        this.getEmployeeAssignmentPeriods(p, employeeId).forEach((period) => {
+          rows.push({
+            project: p,
+            span: period,
+            periodId: period.id,
+            hasOverride: !period.implicit
+          });
+        });
+      });
+      return rows;
     },
 
-    /** Markiert Terminüberschneidungen zwischen den Einsätzen desselben Mitarbeiters. */
+    /** Markiert Terminüberschneidungen zwischen den Einsätzen desselben Mitarbeiters.
+     *  Mehrere Einsatzabschnitte DESSELBEN Projekts gelten dabei nicht als Konflikt
+     *  (das ist der Normalfall bei getrennten Einsätzen, z. B. KW15-18 + KW22-26). */
     computeAssignmentConflicts(assignments) {
       const withIdx = assignments.map((a) => Object.assign({}, a, { idx: this.getSpan(a.span) }));
       withIdx.forEach((a) => { a.conflicts = []; });
       for (let i = 0; i < withIdx.length; i++) {
         for (let j = i + 1; j < withIdx.length; j++) {
+          if (withIdx[i].project.id === withIdx[j].project.id) continue;
           const A = withIdx[i].idx, B = withIdx[j].idx;
           if (A.startIdx <= B.endIdx && B.startIdx <= A.endIdx) {
             withIdx[i].conflicts.push(withIdx[j].project);
@@ -599,6 +646,114 @@
         }
       }
       return withIdx;
+    },
+
+    /* ---------------- Urlaub ---------------- */
+
+    addVacation(data) {
+      const now = new Date().toISOString();
+      const vacation = Object.assign({ id: Util.uid("urlaub"), createdAt: now, updatedAt: now }, data);
+      this.state.vacations.push(vacation);
+      this._persist(() => this.backendMode ? Api.createVacation(vacation) : this._localSaveAllDebounced());
+      this.emit("change");
+      return vacation;
+    },
+
+    updateVacation(id, data) {
+      const v = this.state.vacations.find((x) => x.id === id);
+      if (!v) return null;
+      Object.assign(v, data, { updatedAt: new Date().toISOString() });
+      this._persist(() => this.backendMode ? Api.updateVacation(id, v) : this._localSaveAllDebounced());
+      this.emit("change");
+      return v;
+    },
+
+    deleteVacation(id) {
+      this.state.vacations = this.state.vacations.filter((x) => x.id !== id);
+      this._persist(() => this.backendMode ? Api.deleteVacation(id) : this._localSaveAllDebounced());
+      this.emit("change");
+    },
+
+    getVacation(id) {
+      return this.state.vacations.find((x) => x.id === id) || null;
+    },
+
+    getVacationsForEmployee(employeeId) {
+      return this.state.vacations
+        .filter((v) => v.employeeId === employeeId)
+        .slice()
+        .sort((a, b) => Util.compareWeeks({ year: a.startYear, week: a.startWeek }, { year: b.startYear, week: b.startWeek }));
+    },
+
+    /** Überschneidungen (in Wochenindizes) eines Zeitraums mit dem Urlaub eines Mitarbeiters. */
+    getVacationOverlapsForSpan(employeeId, span) {
+      const spanIdx = this.getSpan(span);
+      const overlaps = [];
+      this.getVacationsForEmployee(employeeId).forEach((v) => {
+        const vIdx = this.getSpan(v);
+        const startIdx = Math.max(spanIdx.startIdx, vIdx.startIdx);
+        const endIdx = Math.min(spanIdx.endIdx, vIdx.endIdx);
+        if (startIdx <= endIdx) overlaps.push({ vacation: v, startIdx, endIdx });
+      });
+      return overlaps;
+    },
+
+    employeeIsOnVacation(employeeId, span) {
+      return this.getVacationOverlapsForSpan(employeeId, span).length > 0;
+    },
+
+    /* ---------------- Bauabschnitte ---------------- */
+
+    getProjectPhases(project) {
+      if (!Array.isArray(project.phases) || !project.phases.length) return [];
+      return project.phases.slice().sort((a, b) =>
+        (a.sortOrder || 0) - (b.sortOrder || 0) ||
+        Util.compareWeeks({ year: a.startYear, week: a.startWeek }, { year: b.startYear, week: b.startWeek })
+      );
+    },
+
+    /** Die tatsächlichen Bau-Zeiträume eines Projekts: die Bauabschnitte, falls
+     *  vorhanden (Kapazität wird dann NUR in diesen Zeiträumen berechnet),
+     *  sonst ein einzelner Zeitraum über die gesamte Projektlaufzeit. */
+    getProjectSpans(project) {
+      const phases = this.getProjectPhases(project);
+      if (phases.length) {
+        return phases.map((ph) => ({
+          startYear: ph.startYear, startWeek: ph.startWeek, endYear: ph.endYear, endWeek: ph.endWeek, phase: ph
+        }));
+      }
+      return [{ startYear: project.startYear, startWeek: project.startWeek, endYear: project.endYear, endWeek: project.endWeek, phase: null }];
+    },
+
+    /* ---------------- Konflikterkennung Obermonteur ---------------- */
+
+    /** Erkennt, wenn mehrere (nicht stornierte) Projekte im selben Zeitraum
+     *  denselben Obermonteur benötigen (berücksichtigt Bauabschnitte, falls
+     *  vorhanden). Liefert die Menge betroffener Projekt-IDs sowie die
+     *  konkreten Konfliktpaare (für Tooltips/Banner). */
+    computeObermonteurConflicts() {
+      const bySpan = [];
+      this.state.projects.forEach((p) => {
+        if (p.status === "Storniert" || !p.obermonteur) return;
+        this.getProjectSpans(p).forEach((span) => {
+          bySpan.push({ project: p, span, idx: this.getSpan(span), obermonteur: p.obermonteur });
+        });
+      });
+      const conflictProjectIds = new Set();
+      const pairs = [];
+      for (let i = 0; i < bySpan.length; i++) {
+        for (let j = i + 1; j < bySpan.length; j++) {
+          if (bySpan[i].project.id === bySpan[j].project.id) continue;
+          if (bySpan[i].obermonteur !== bySpan[j].obermonteur) continue;
+          const A = bySpan[i].idx, B = bySpan[j].idx;
+          if (A.startIdx <= B.endIdx && B.startIdx <= A.endIdx) {
+            conflictProjectIds.add(bySpan[i].project.id);
+            conflictProjectIds.add(bySpan[j].project.id);
+            pairs.push({ a: bySpan[i].project, b: bySpan[j].project, obermonteur: bySpan[i].obermonteur });
+          }
+        }
+      }
+      return { conflictProjectIds, pairs };
     },
 
     /** Greedy Intervall-Stapelung: weist jedem Eintrag eine Spur (Sub-Zeile) zu,
@@ -689,11 +844,16 @@
 
       this.state.projects.forEach((p) => {
         if (p.status === "Storniert") return;
-        const { startIdx, endIdx } = this.getSpan(p);
-        for (let i = startIdx; i <= endIdx; i++) {
-          counts[i] += 1;
-          staff[i] += Number(p.besetzung) || 0;
-        }
+        // Bei Projekten mit Bauabschnitten erfolgt die Kapazitätsberechnung
+        // ausschließlich innerhalb der tatsächlichen Bauabschnitte (nicht in
+        // etwaigen Lücken/Bauunterbrechungen dazwischen).
+        this.getProjectSpans(p).forEach((span) => {
+          const { startIdx, endIdx } = this.getSpan(span);
+          for (let i = startIdx; i <= endIdx; i++) {
+            counts[i] += 1;
+            staff[i] += Number(p.besetzung) || 0;
+          }
+        });
       });
 
       let previewCounts = null, previewStaff = null;

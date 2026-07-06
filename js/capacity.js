@@ -16,26 +16,29 @@
     renderBars(data.counts, data.staff, data.previewCounts, data.previewStaff);
   }
 
-  /** Live-Vorschau während des Ziehens eines Balkens (ohne den State zu verändern). */
+  /** Live-Vorschau während des Ziehens eines Balkens (ohne den State zu verändern).
+   *  override: { besetzung, originIdx:{startIdx,endIdx}, newIdx:{startIdx,endIdx} }
+   *  – bewusst unabhängig vom Projekt-/Bauabschnitts-Konzept gehalten, damit
+   *  sowohl das Verschieben eines ganzen Projekts als auch das Verschieben
+   *  eines einzelnen Bauabschnitts dieselbe Vorschau-Logik nutzen können. */
   function renderWithOverride(override) {
     if (!override) { render(); return; }
-    const project = App.getProject(override.projectId);
-    if (!project) { render(); return; }
 
     const base = App.computeCapacity();
     const counts = base.counts.slice();
     const staff = base.staff.slice();
     const preview = base.previewCounts ? base.previewCounts.slice() : null;
     const previewStaff = base.previewStaff ? base.previewStaff.slice() : null;
-    const besetzung = Number(project.besetzung) || 0;
-    const original = App.getSpan(project);
+    const besetzung = override.besetzung || 0;
+    const original = override.originIdx;
+    const updated = override.newIdx;
 
     for (let i = original.startIdx; i <= original.endIdx; i++) {
       counts[i] -= 1;
       staff[i] -= besetzung;
       if (preview) { preview[i] -= 1; previewStaff[i] -= besetzung; }
     }
-    for (let i = override.startIdx; i <= override.endIdx; i++) {
+    for (let i = updated.startIdx; i <= updated.endIdx; i++) {
       counts[i] += 1;
       staff[i] += besetzung;
       if (preview) { preview[i] += 1; previewStaff[i] += besetzung; }

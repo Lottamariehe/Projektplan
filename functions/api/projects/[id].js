@@ -1,6 +1,7 @@
 /* =========================================================
    PUT    /api/projects/:id – Projekt aktualisieren
-          (inkl. Mitarbeiter-Zuordnung und Tags, falls mitgeschickt)
+          (inkl. Mitarbeiter-Zuordnung, Einsatzzeiträume,
+          Bauabschnitte und Tags, falls mitgeschickt)
    DELETE /api/projects/:id – Projekt ENDGÜLTIG löschen
           (nur Administratoren – kritische Aktion)
    ========================================================= */
@@ -14,6 +15,10 @@ const UPDATABLE_FIELDS = [
   "status", "farbe", "bemerkungen", "notizen", "updatedAt"
 ];
 
+function genId(prefix) {
+  return prefix + "_" + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "").slice(0, 16) : String(Math.random()).slice(2));
+}
+
 export async function onRequestPut(context) {
   const db = context.env.DB;
   if (!db) return errorResponse("D1-Datenbank 'DB' ist nicht gebunden.", 500);
@@ -23,6 +28,7 @@ export async function onRequestPut(context) {
   try { body = await context.request.json(); } catch (e) { return errorResponse("Ungültiges JSON."); }
 
   if (!body.updatedAt) body.updatedAt = new Date().toISOString();
+  const now = body.updatedAt;
   const update = buildUpdate("projects", id, body, UPDATABLE_FIELDS);
 
   const statements = [];
@@ -30,23 +36,42 @@ export async function onRequestPut(context) {
 
   const hasEmployeeIds = Array.isArray(body.employeeIds);
   const hasTags = Array.isArray(body.tags);
-  const employeeRanges = body.employeeRanges && typeof body.employeeRanges === "object" ? body.employeeRanges : {};
+  const hasPhases = Array.isArray(body.phases);
+  const assignmentPeriods = body.assignmentPeriods && typeof body.assignmentPeriods === "object" ? body.assignmentPeriods : {};
 
   if (hasEmployeeIds) {
     statements.push(db.prepare("DELETE FROM project_employees WHERE projectId = ?").bind(id));
+    statements.push(db.prepare("DELETE FROM assignment_periods WHERE projectId = ?").bind(id));
     body.employeeIds.forEach((empId) => {
-      const r = employeeRanges[empId] || {};
       statements.push(
-        db.prepare(
-          "INSERT INTO project_employees (projectId, employeeId, startYear, startWeek, endYear, endWeek) VALUES (?,?,?,?,?,?)"
-        ).bind(id, empId, r.startYear || null, r.startWeek || null, r.endYear || null, r.endWeek || null)
+        db.prepare("INSERT INTO project_employees (projectId, employeeId) VALUES (?, ?)").bind(id, empId)
       );
+      const periods = Array.isArray(assignmentPeriods[empId]) ? assignmentPeriods[empId] : [];
+      periods.forEach((p) => {
+        if (!p.startYear || !p.startWeek || !p.endYear || !p.endWeek) return;
+        statements.push(
+          db.prepare(
+            "INSERT INTO assignment_periods (id, projectId, employeeId, startYear, startWeek, endYear, endWeek, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?)"
+          ).bind(p.id || genId("asg"), id, empId, p.startYear, p.startWeek, p.endYear, p.endWeek, now, now)
+        );
+      });
     });
   }
   if (hasTags) {
     statements.push(db.prepare("DELETE FROM project_tags WHERE projectId = ?").bind(id));
     body.tags.forEach((tag) => {
       statements.push(db.prepare("INSERT INTO project_tags (projectId, tag) VALUES (?, ?)").bind(id, tag));
+    });
+  }
+  if (hasPhases) {
+    statements.push(db.prepare("DELETE FROM project_phases WHERE projectId = ?").bind(id));
+    body.phases.forEach((ph, i) => {
+      if (!ph.startYear || !ph.startWeek || !ph.endYear || !ph.endWeek) return;
+      statements.push(
+        db.prepare(
+          "INSERT INTO project_phases (id, projectId, name, startYear, startWeek, endYear, endWeek, sortOrder, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)"
+        ).bind(ph.id || genId("phase"), id, ph.name || "", ph.startYear, ph.startWeek, ph.endYear, ph.endWeek, ph.sortOrder ?? i, now, now)
+      );
     });
   }
 
@@ -72,6 +97,8 @@ export async function onRequestDelete(context) {
     await db.batch([
       db.prepare("DELETE FROM project_employees WHERE projectId = ?").bind(id),
       db.prepare("DELETE FROM project_tags WHERE projectId = ?").bind(id),
+      db.prepare("DELETE FROM assignment_periods WHERE projectId = ?").bind(id),
+      db.prepare("DELETE FROM project_phases WHERE projectId = ?").bind(id),
       db.prepare("UPDATE tenders SET linkedProjectId = NULL WHERE linkedProjectId = ?").bind(id),
       db.prepare("DELETE FROM projects WHERE id = ?").bind(id)
     ]);

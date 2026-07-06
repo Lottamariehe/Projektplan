@@ -27,10 +27,12 @@
 
     const weeks = App.state.ui.weeks;
     const rows = buildRowList();
+    const obermonteurConflicts = App.computeObermonteurConflicts();
 
     renderHeader(weeks);
-    renderSideAndBody(rows, weeks, colWidth);
+    renderSideAndBody(rows, weeks, colWidth, obermonteurConflicts);
     updateWarningBanner();
+    updateObermonteurBanner(obermonteurConflicts);
     syncScrollWidth();
   }
 
@@ -55,7 +57,7 @@
     els.header.innerHTML = html;
   }
 
-  function renderSideAndBody(rows, weeks, colWidth) {
+  function renderSideAndBody(rows, weeks, colWidth, obermonteurConflicts) {
     if (!rows.length) {
       els.side.innerHTML = `<div class="gantt-side-row" style="color:var(--color-text-faint);cursor:default;">Keine Projekte für die aktuelle Filterauswahl.</div>`;
       els.body.innerHTML = buildRowBackgrounds(weeks, 1);
@@ -67,17 +69,17 @@
     let bodyBgHtml = buildRowBackgrounds(weeks, rows.length);
 
     rows.forEach((row) => {
-      sideHtml += buildSideRow(row);
+      sideHtml += buildSideRow(row, obermonteurConflicts);
     });
 
     els.side.innerHTML = sideHtml;
     els.body.innerHTML = bodyBgHtml;
     els.body.style.height = (rows.length * getRowHeightPx()) + "px";
 
-    // Balken als absolut positionierte Elemente einfügen
+    // Balken als absolut positionierte Elemente einfügen (ein Projekt kann bei
+    // Bauabschnitten mehrere getrennte Balken in derselben Zeile haben).
     rows.forEach((row, rowIndex) => {
-      const barEl = buildBarEl(row, rowIndex, colWidth);
-      els.body.appendChild(barEl);
+      buildBarsForRow(row, rowIndex, colWidth, obermonteurConflicts).forEach((barEl) => els.body.appendChild(barEl));
     });
 
     // Klick auf Seitenzeile öffnet Detail/Bearbeiten
@@ -106,16 +108,19 @@
     return out;
   }
 
-  function buildSideRow(row) {
+  function buildSideRow(row, obermonteurConflicts) {
     const item = row.item;
     if (row.kind === "project") {
       const tags = Array.isArray(item.tags) ? item.tags : [];
       const tagHtml = tags.length
         ? `<span class="mini-tags">${tags.slice(0, 3).map((t) => `<span class="mini-tag">${Util.escapeHtml(t)}</span>`).join("")}${tags.length > 3 ? `<span class="mini-tag">+${tags.length - 3}</span>` : ""}</span>`
         : "";
-      return `<div class="gantt-side-row" data-id="${item.id}" data-kind="project">
-        <span class="p-name">${Util.escapeHtml(item.name)}</span>
-        <span class="p-meta">${Util.escapeHtml(item.projektleiter || "–")} · ${Util.escapeHtml(item.obermonteur || "–")} · ${(item.employeeIds || []).length || item.besetzung || 0} MA${tagHtml}</span>
+      const hasConflict = obermonteurConflicts && obermonteurConflicts.conflictProjectIds.has(item.id);
+      const phaseCount = App.getProjectPhases(item).length;
+      const phaseHint = phaseCount ? `<span class="mini-tag phase-tag">${phaseCount} Bauabschnitte</span>` : "";
+      return `<div class="gantt-side-row ${hasConflict ? "row-conflict" : ""}" data-id="${item.id}" data-kind="project">
+        <span class="p-name">${Util.escapeHtml(item.name)}${hasConflict ? ' <span class="conflict-icon" title="Obermonteur-Konflikt: mehrere Projekte benötigen gleichzeitig denselben Obermonteur">⚠</span>' : ""}</span>
+        <span class="p-meta">${Util.escapeHtml(item.projektleiter || "–")} · ${Util.escapeHtml(item.obermonteur || "–")} · ${(item.employeeIds || []).length || item.besetzung || 0} MA${tagHtml}${phaseHint}</span>
       </div>`;
     }
     return `<div class="gantt-side-row" data-id="${item.id}" data-kind="tender">
@@ -124,21 +129,33 @@
     </div>`;
   }
 
-  function buildBarEl(row, rowIndex, colWidth) {
+  /** Baut die Balken einer Zeile: bei Bauabschnitten ein Balken je Abschnitt,
+   *  sonst genau ein Balken über die gesamte Laufzeit (Standardfall). */
+  function buildBarsForRow(row, rowIndex, colWidth, obermonteurConflicts) {
+    if (row.kind !== "project") return [buildBarEl(row, rowIndex, colWidth, null, obermonteurConflicts)];
+    const phases = App.getProjectPhases(row.item);
+    if (!phases.length) return [buildBarEl(row, rowIndex, colWidth, null, obermonteurConflicts)];
+    return phases.map((phase) => buildBarEl(row, rowIndex, colWidth, phase, obermonteurConflicts));
+  }
+
+  function buildBarEl(row, rowIndex, colWidth, phase, obermonteurConflicts) {
     const item = row.item;
-    const { startIdx, endIdx } = App.getSpan(item);
+    const span = phase || item;
+    const { startIdx, endIdx } = App.getSpan(span);
     const rowHeight = getRowHeightPx();
 
     const bar = document.createElement("div");
     bar.className = "gantt-bar" + (row.kind === "tender" ? " preview-bar" : "");
     bar.dataset.id = item.id;
     bar.dataset.kind = row.kind;
+    if (phase) bar.dataset.phaseId = phase.id;
     bar.style.top = (rowIndex * rowHeight + 7) + "px";
     bar.style.left = (startIdx * colWidth) + "px";
     bar.style.width = Math.max(colWidth - 3, (endIdx - startIdx + 1) * colWidth - 3) + "px";
 
     if (row.kind === "project") {
       bar.style.background = item.farbe || "#2f6fed";
+      if (obermonteurConflicts && obermonteurConflicts.conflictProjectIds.has(item.id)) bar.classList.add("bar-conflict");
     } else {
       bar.style.background = "#8b93a3";
       if (App.tenderOverlapsAnyProject(item)) bar.classList.add("overlap");
@@ -146,9 +163,9 @@
 
     const label = document.createElement("span");
     label.className = "bar-label";
-    label.textContent = item.name;
+    label.textContent = phase && phase.name ? item.name + " – " + phase.name : item.name;
     bar.appendChild(label);
-    bar.title = buildTooltip(row);
+    bar.title = buildTooltip(row, phase, obermonteurConflicts);
 
     if (row.kind === "project") {
       const leftHandle = document.createElement("div");
@@ -158,11 +175,11 @@
       bar.appendChild(leftHandle);
       bar.appendChild(rightHandle);
 
-      leftHandle.addEventListener("mousedown", (e) => startDrag(e, item, "resize-left"));
-      rightHandle.addEventListener("mousedown", (e) => startDrag(e, item, "resize-right"));
+      leftHandle.addEventListener("mousedown", (e) => startDrag(e, item, "resize-left", phase, bar));
+      rightHandle.addEventListener("mousedown", (e) => startDrag(e, item, "resize-right", phase, bar));
       bar.addEventListener("mousedown", (e) => {
         if (e.target === leftHandle || e.target === rightHandle) return;
-        startDrag(e, item, "move");
+        startDrag(e, item, "move", phase, bar);
       });
       bar.addEventListener("click", (e) => {
         if (dragState && dragState.moved) { e.stopPropagation(); return; }
@@ -175,13 +192,22 @@
     return bar;
   }
 
-  function buildTooltip(row) {
+  function buildTooltip(row, phase, obermonteurConflicts) {
     const item = row.item;
     if (row.kind === "project") {
       const names = App.employeeNames(item.employeeIds);
       const tagLine = Array.isArray(item.tags) && item.tags.length ? `\nTags: ${item.tags.join(", ")}` : "";
       const mitarbeiterLine = names.length ? `\nMitarbeiter: ${names.join(", ")}` : "";
-      return `${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nProjektleiter: ${item.projektleiter || "–"}\nObermonteur: ${item.obermonteur || "–"}\nBesetzung: ${item.besetzung || 0} Mitarbeitende\nStatus: ${item.status}\nZeitraum: KW ${item.startWeek}/${item.startYear} – KW ${item.endWeek}/${item.endYear}${tagLine}${mitarbeiterLine}`;
+      const span = phase || item;
+      const phaseLine = phase ? `\nBauabschnitt: ${phase.name || "(ohne Bezeichnung)"}` : "";
+      let conflictLine = "";
+      if (obermonteurConflicts && obermonteurConflicts.conflictProjectIds.has(item.id)) {
+        const others = obermonteurConflicts.pairs
+          .filter((pr) => pr.obermonteur === item.obermonteur && (pr.a.id === item.id || pr.b.id === item.id))
+          .map((pr) => (pr.a.id === item.id ? pr.b : pr.a).name);
+        conflictLine = `\n⚠ Obermonteur-Konflikt mit: ${Array.from(new Set(others)).join(", ")}`;
+      }
+      return `${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nProjektleiter: ${item.projektleiter || "–"}\nObermonteur: ${item.obermonteur || "–"}\nBesetzung: ${item.besetzung || 0} Mitarbeitende\nStatus: ${item.status}\nZeitraum: KW ${span.startWeek}/${span.startYear} – KW ${span.endWeek}/${span.endYear}${phaseLine}${tagLine}${mitarbeiterLine}${conflictLine}`;
     }
     const gewerkeLine = Array.isArray(item.gewerke) && item.gewerke.length ? `\nGewerke: ${item.gewerke.join(", ")}` : "";
     return `Ausschreibung: ${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nStatus: ${item.angebotsstatus}\nGeplanter Zeitraum: KW ${item.startWeek}/${item.startYear} – KW ${item.endWeek}/${item.endYear}${gewerkeLine}\nKlicken zum Bearbeiten / Umwandeln.`;
@@ -193,16 +219,37 @@
     else Modals.openTenderModal(row.item.id);
   }
 
+  /** Zeigt einen Hinweis, wenn mehrere Projekte im selben Zeitraum denselben
+   *  Obermonteur benötigen würden (siehe App.computeObermonteurConflicts). */
+  function updateObermonteurBanner(conflicts) {
+    const el = document.getElementById("obermonteurWarning");
+    if (!el) return;
+    if (!conflicts || !conflicts.pairs.length) { el.classList.add("hidden"); return; }
+    const seen = new Set();
+    const lines = [];
+    conflicts.pairs.forEach((pr) => {
+      const key = [pr.a.id, pr.b.id].sort().join("|");
+      if (seen.has(key)) return;
+      seen.add(key);
+      lines.push(`${pr.obermonteur}: „${pr.a.name}“ ↔ „${pr.b.name}“`);
+    });
+    el.className = "capacity-warning critical";
+    el.textContent = "Obermonteur-Konflikt – " + lines.join(" · ");
+    el.classList.remove("hidden");
+  }
+
   /* ---------------- Drag & Resize ---------------- */
 
-  function startDrag(e, project, mode) {
+  function startDrag(e, project, mode, phase, barEl) {
     e.preventDefault();
     e.stopPropagation();
     const colWidth = App.getColWidth();
-    const span = App.getSpan(project);
+    const span = App.getSpan(phase || project);
     dragState = {
       mode,
       project,
+      phase: phase || null,
+      besetzung: Number(project.besetzung) || 0,
       startX: e.clientX,
       originStartIdx: span.startIdx,
       originEndIdx: span.endIdx,
@@ -210,7 +257,7 @@
       newEndIdx: span.endIdx,
       colWidth,
       moved: false,
-      barEl: document.querySelector(`.gantt-bar[data-id="${project.id}"]`)
+      barEl: barEl || document.querySelector(`.gantt-bar[data-id="${project.id}"]`)
     };
     if (dragState.barEl) dragState.barEl.classList.add("dragging");
     document.addEventListener("mousemove", onDragMove);
@@ -259,9 +306,9 @@
   function buildDragOverride() {
     if (!dragState) return null;
     return {
-      projectId: dragState.project.id,
-      startIdx: dragState.newStartIdx,
-      endIdx: dragState.newEndIdx
+      besetzung: dragState.besetzung,
+      originIdx: { startIdx: dragState.originStartIdx, endIdx: dragState.originEndIdx },
+      newIdx: { startIdx: dragState.newStartIdx, endIdx: dragState.newEndIdx }
     };
   }
 
@@ -275,13 +322,23 @@
     if (dragState.moved) {
       const startWeek = weeks[dragState.newStartIdx];
       const endWeek = weeks[dragState.newEndIdx];
-      App.updateProject(dragState.project.id, {
-        startYear: startWeek.year,
-        startWeek: startWeek.week,
-        endYear: endWeek.year,
-        endWeek: endWeek.week
-      });
-      Toast.show("Projekt „" + dragState.project.name + "“ aktualisiert.");
+      if (dragState.phase) {
+        // Es wurde ein einzelner Bauabschnitt verschoben/verlängert - nur
+        // dieser Abschnitt wird aktualisiert, der Rest des Projekts bleibt.
+        const updatedPhases = (dragState.project.phases || []).map((ph) => ph === dragState.phase
+          ? Object.assign({}, ph, { startYear: startWeek.year, startWeek: startWeek.week, endYear: endWeek.year, endWeek: endWeek.week })
+          : ph);
+        App.updateProject(dragState.project.id, { phases: updatedPhases });
+        Toast.show("Bauabschnitt aktualisiert.");
+      } else {
+        App.updateProject(dragState.project.id, {
+          startYear: startWeek.year,
+          startWeek: startWeek.week,
+          endYear: endWeek.year,
+          endWeek: endWeek.week
+        });
+        Toast.show("Projekt „" + dragState.project.name + "“ aktualisiert.");
+      }
     }
     const wasMoved = dragState.moved;
     dragState = null;

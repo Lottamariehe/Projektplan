@@ -279,6 +279,17 @@
     { value: "manuell", label: "Manuell (Drag & Drop)" }
   ];
 
+  // Sortiermodi für die Projektübersicht im Projektplaner (wird gemerkt).
+  const PLANNER_SORT_MODES = [
+    { value: "alpha", label: "Alphabetisch" },
+    { value: "start", label: "Projektbeginn" },
+    { value: "end", label: "Projektende" },
+    { value: "auftraggeber", label: "Auftraggeber" },
+    { value: "leiter", label: "Projektleiter" },
+    { value: "ober", label: "Obermonteur" },
+    { value: "status", label: "Status" }
+  ];
+
   global.Storage = {
     STORAGE_KEY,
     PROJECT_STATUS,
@@ -288,6 +299,7 @@
     EMPLOYEE_FUNKTIONEN,
     EMPLOYEE_BESCHAEFTIGUNG,
     PERSONAL_SORT_MODES,
+    PLANNER_SORT_MODES,
     DEFAULT_COLORS,
     defaultSettings,
     buildSampleData,
