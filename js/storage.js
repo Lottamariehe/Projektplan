@@ -19,8 +19,23 @@
   ];
 
   // Standard-Tags für Projekte (zusätzlich zur Projektfarbe, Mehrfachauswahl).
+  // Dienen ausschließlich der fachlichen Beschreibung/Filterung/Suche - anders
+  // als die Projektart (siehe DEFAULT_PROJEKTARTEN) haben Tags KEINE Farbe.
   const PROJECT_TAGS = [
-    "Heizung", "Lüftung", "Sanitär", "Wärmepumpe", "Strangsanierung", "Öffentlicher Auftraggeber"
+    "Heizung", "Lüftung", "Sanitär", "Wärmepumpe", "Strangsanierung", "Öffentlicher Auftraggeber",
+    "Heizungserneuerung", "Kleines Projekt"
+  ];
+
+  // Standard-Projektarten (rein optische Einordnung der Projektübersicht,
+  // siehe Aufgabe "Projektarten und farbliche Kennzeichnung"). Wird in den
+  // Einstellungen bearbeitbar sein (Name + Farbe), daher hier nur der
+  // Startwert - die tatsächlich aktive Liste liegt in App.state.settings.projektarten.
+  const DEFAULT_PROJEKTARTEN = [
+    { name: "Großprojekt", color: "#d6ebfb" },
+    { name: "Kleines Projekt", color: "#fcdede" },
+    { name: "Heizungserneuerung", color: "#fcdede" },
+    { name: "Wärmepumpe", color: "#fcdede" },
+    { name: "Badezimmer", color: "#fbdfec" }
   ];
 
   // Standard-Gewerke für Ausschreibungen (Mehrfachauswahl).
@@ -41,7 +56,14 @@
       warnProjekte: 3,
       kritischProjekte: 5,
       mitarbeiterGesamt: 14,
-      colorPalette: DEFAULT_COLORS
+      colorPalette: DEFAULT_COLORS,
+      projektarten: DEFAULT_PROJEKTARTEN.slice(),
+      // Optionale, standardmäßig DEAKTIVIERTE Obergrenze für die Anzahl
+      // gleichzeitig betreuter Projekte je Projektleiter/Obermonteur-Namen.
+      // { "Sven Heise": 4 } - fehlt ein Name hier, gilt er als unbegrenzt
+      // (Standardfall: mehrere gleichzeitige Projekte sind ausdrücklich erlaubt).
+      projektleiterLimits: {},
+      obermonteurLimits: {}
     };
   }
 
@@ -287,7 +309,8 @@
     { value: "auftraggeber", label: "Auftraggeber" },
     { value: "leiter", label: "Projektleiter" },
     { value: "ober", label: "Obermonteur" },
-    { value: "status", label: "Status" }
+    { value: "status", label: "Status" },
+    { value: "projektart", label: "Projektart" }
   ];
 
   global.Storage = {
@@ -301,6 +324,7 @@
     PERSONAL_SORT_MODES,
     PLANNER_SORT_MODES,
     DEFAULT_COLORS,
+    DEFAULT_PROJEKTARTEN,
     defaultSettings,
     buildSampleData,
     loadRaw,

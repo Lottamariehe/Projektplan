@@ -80,12 +80,15 @@
     </div>`;
   }
 
-  function employeeAssignRowHtml(opt, entry, projectSpan) {
+  function employeeAssignRowHtml(opt, entry, projectSpan, phaseState) {
     const vacationOverlaps = App.getVacationOverlapsForSpan(opt.value, projectSpan);
     const vacationWarn = vacationOverlaps.length
       ? `<span class="ea-vacation-warn" title="Im Urlaub: ${vacationOverlaps.map((o) => Util.escapeHtml(App.state.ui.weeks[o.startIdx].week + "/" + App.state.ui.weeks[o.startIdx].year + " – " + App.state.ui.weeks[o.endIdx].week + "/" + App.state.ui.weeks[o.endIdx].year)).join(", ")}">⚠ Urlaub im Zeitraum</span>`
       : "";
     const periodsHtml = entry.periods.map((p) => periodRowHtml(opt.value, p, projectSpan)).join("");
+    const implicitHint = (phaseState && phaseState.length)
+      ? `folgt automatisch den ${phaseState.length} Bauabschnitten des Projekts (Personaleinsatzplanung)`
+      : "gesamte Projektlaufzeit (kein eigener Zeitraum hinterlegt)";
     return `<div class="employee-assign-row" data-emp="${Util.escapeHtml(opt.value)}">
       <div class="employee-assign-header">
         <label class="employee-assign-check">
@@ -96,7 +99,7 @@
         <button type="button" class="btn-mini ea-add-period ${entry.checked ? "" : "hidden"}">+ Zeitraum</button>
       </div>
       <div class="ea-periods ${entry.periods.length ? "" : "hidden"}">${periodsHtml}</div>
-      <p class="settings-hint ea-implicit-hint ${entry.checked && !entry.periods.length ? "" : "hidden"}" style="margin:2px 0 0;">gesamte Projektlaufzeit (kein eigener Zeitraum hinterlegt)</p>
+      <p class="settings-hint ea-implicit-hint ${entry.checked && !entry.periods.length ? "" : "hidden"}" style="margin:2px 0 0;">${implicitHint}</p>
     </div>`;
   }
 
@@ -111,9 +114,9 @@
     return state;
   }
 
-  function renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan) {
+  function renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan, phaseState) {
     container.innerHTML = employeeOptions.length
-      ? employeeOptions.map((opt) => employeeAssignRowHtml(opt, assignState[opt.value], projectSpan)).join("")
+      ? employeeOptions.map((opt) => employeeAssignRowHtml(opt, assignState[opt.value], projectSpan, phaseState)).join("")
       : `<span class="settings-hint" style="margin:0;">Noch keine aktiven Mitarbeiter angelegt (Einstellungen → Mitarbeiter).</span>`;
 
     container.querySelectorAll(".employee-assign-row").forEach((row) => {
@@ -121,17 +124,17 @@
       const entry = assignState[empId];
       row.querySelector(".ea-check").addEventListener("change", (e) => {
         entry.checked = e.target.checked;
-        renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan);
+        renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan, phaseState);
       });
       const addBtn = row.querySelector(".ea-add-period");
       if (addBtn) addBtn.addEventListener("click", () => {
         entry.periods.push({ id: null, startYear: projectSpan.startYear, startWeek: projectSpan.startWeek, endYear: projectSpan.endYear, endWeek: projectSpan.endWeek });
-        renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan);
+        renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan, phaseState);
       });
       row.querySelectorAll(".ea-period-row").forEach((periodRow, i) => {
         periodRow.querySelector(".ea-remove-period").addEventListener("click", () => {
           entry.periods.splice(i, 1);
-          renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan);
+          renderEmployeeAssignList(container, employeeOptions, assignState, projectSpan, phaseState);
         });
         const syncPeriod = () => {
           entry.periods[i] = Object.assign({}, entry.periods[i], {
@@ -172,7 +175,7 @@
     </div>`;
   }
 
-  function renderPhaseList(container, phaseState, projectSpan) {
+  function renderPhaseList(container, phaseState, projectSpan, onPhasesChanged) {
     container.innerHTML = phaseState.length
       ? phaseState.map(phaseRowHtml).join("")
       : `<span class="settings-hint" style="margin:0;">Keine Bauabschnitte – das Projekt wird als ein durchgehender Balken über die gesamte Laufzeit dargestellt.</span>`;
@@ -180,7 +183,8 @@
     container.querySelectorAll(".phase-row").forEach((row, i) => {
       row.querySelector(".ph-remove").addEventListener("click", () => {
         phaseState.splice(i, 1);
-        renderPhaseList(container, phaseState, projectSpan);
+        if (onPhasesChanged) onPhasesChanged();
+        else renderPhaseList(container, phaseState, projectSpan);
       });
       const sync = () => {
         phaseState[i] = Object.assign({}, phaseState[i], {
@@ -211,10 +215,12 @@
       endWeek: (App.state.ui.weeks.find((w) => w.isToday)?.week || 1) + 1,
       projektleiter: "", obermonteur: "", besetzung: 2,
       status: "Geplant", farbe: (App.state.settings.colorPalette || Storage.DEFAULT_COLORS)[0],
+      projektart: "",
       bemerkungen: "", notizen: "", tags: [], employeeIds: []
     };
 
     const palette = App.state.settings.colorPalette || Storage.DEFAULT_COLORS;
+    const projektarten = App.state.settings.projektarten || Storage.DEFAULT_PROJEKTARTEN;
     const employeeOptions = App.getActiveEmployees()
       .slice()
       .sort((a, b) => (a.nachname || "").localeCompare(b.nachname || ""))
@@ -275,6 +281,14 @@
           <label>Status</label>
           <select id="fStatus">${selectOptions(Storage.PROJECT_STATUS, p.status)}</select>
         </div>
+        <div class="form-row">
+          <label>Projektart</label>
+          <select id="fProjektart">
+            <option value="" ${!p.projektart ? "selected" : ""}>– keine Projektart –</option>
+            ${projektarten.map((pa) => `<option value="${Util.escapeHtml(pa.name)}" ${pa.name === p.projektart ? "selected" : ""}>${Util.escapeHtml(pa.name)}</option>`).join("")}
+          </select>
+          <p class="settings-hint" style="margin:6px 0 0;">Bestimmt die Hintergrundfarbe des Projektnamens in der Übersicht (unabhängig von der Balkenfarbe unten). Die Liste der Projektarten wird in den Einstellungen verwaltet.</p>
+        </div>
 
         <div class="form-row span-2">
           <label>Farbe</label>
@@ -333,14 +347,20 @@
     const phaseState = editing ? App.getProjectPhases(p).map((ph) => Object.assign({}, ph)) : [];
 
     const employeeAssignList = document.getElementById("employeeAssignList");
-    if (employeeAssignList) renderEmployeeAssignList(employeeAssignList, employeeOptions, assignState, projectSpan);
+    if (employeeAssignList) renderEmployeeAssignList(employeeAssignList, employeeOptions, assignState, projectSpan, phaseState);
 
     const phaseList = document.getElementById("phaseList");
-    if (phaseList) renderPhaseList(phaseList, phaseState, projectSpan);
+    const refreshPhaseDependentUi = () => {
+      renderPhaseList(phaseList, phaseState, projectSpan, refreshPhaseDependentUi);
+      // Der Hinweistext "folgt automatisch den Bauabschnitten" in der
+      // Mitarbeiterzuordnung hängt von der aktuellen Anzahl Bauabschnitte ab.
+      if (employeeAssignList) renderEmployeeAssignList(employeeAssignList, employeeOptions, assignState, projectSpan, phaseState);
+    };
+    if (phaseList) refreshPhaseDependentUi();
     const addPhaseBtn = document.getElementById("btnAddPhase");
     if (addPhaseBtn) addPhaseBtn.addEventListener("click", () => {
       phaseState.push({ id: null, name: "", startYear: projectSpan.startYear, startWeek: projectSpan.startWeek, endYear: projectSpan.endYear, endWeek: projectSpan.endWeek });
-      renderPhaseList(phaseList, phaseState, projectSpan);
+      refreshPhaseDependentUi();
     });
 
     document.querySelectorAll("#fColorPalette .color-swatch").forEach((sw) => {
@@ -390,6 +410,7 @@
         obermonteur: document.getElementById("fOber").value.trim(),
         besetzung: parseInt(document.getElementById("fBesetzung").value, 10) || 0,
         status: document.getElementById("fStatus").value,
+        projektart: document.getElementById("fProjektart").value,
         farbe: document.getElementById("fFarbe").value,
         bemerkungen: document.getElementById("fBemerkungen").value.trim(),
         notizen: document.getElementById("fNotizen").value.trim(),

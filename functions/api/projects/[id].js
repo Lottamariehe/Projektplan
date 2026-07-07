@@ -12,7 +12,7 @@ const UPDATABLE_FIELDS = [
   "name", "auftraggeber", "adresse",
   "startYear", "startWeek", "endYear", "endWeek",
   "projektleiter", "obermonteur", "besetzung",
-  "status", "farbe", "bemerkungen", "notizen", "updatedAt"
+  "status", "farbe", "projektart", "bemerkungen", "notizen", "updatedAt"
 ];
 
 function genId(prefix) {

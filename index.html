@@ -65,6 +65,9 @@
           <select id="filterTag" class="select-input">
             <option value="">Alle Tags</option>
           </select>
+          <select id="filterProjektart" class="select-input">
+            <option value="">Alle Projektarten</option>
+          </select>
           <label class="checkbox-label">
             <input type="checkbox" id="toggleAusschreibungen" checked>
             Ausschreibungsvorschau
@@ -299,6 +302,40 @@
           <h3>Projektfarben</h3>
           <p class="settings-hint">Standardpalette für neue Projekte. Die Farbe je Projekt kann beim Bearbeiten geändert werden.</p>
           <div class="color-palette" id="colorPalette"></div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Projektarten</h3>
+          <p class="settings-hint">Bestimmen die Hintergrundfarbe des Projektnamens in der Übersicht (nicht die Balkenfarbe – diese bleibt frei wählbar). Frei erweiterbar und im Projektplaner sortier-/filterbar.</p>
+          <ul class="tag-list projektart-list" id="listProjektarten"></ul>
+          <div class="add-row projektart-add-row">
+            <input type="text" id="inputNeueProjektart" placeholder="Bezeichnung">
+            <input type="color" id="inputNeueProjektartFarbe" value="#d6ebfb" title="Farbe">
+            <button class="btn btn-ghost" id="btnAddProjektart">Hinzufügen</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Kapazitätsgrenzen je Person (optional)</h3>
+          <p class="settings-hint">Standardmäßig deaktiviert: Ein Projektleiter oder Obermonteur darf beliebig viele Projekte gleichzeitig betreuen – das ist im Alltag der Normalfall. Nur wenn hier für eine Person ausdrücklich ein Limit hinterlegt wird, erscheint ab Überschreitung ein Konflikthinweis.</p>
+          <h4 class="settings-subhead">Projektleiter</h4>
+          <ul class="tag-list" id="listProjektleiterLimits"></ul>
+          <div class="add-row">
+            <select id="selectProjektleiterLimit" class="select-input">
+              <option value="">Person wählen …</option>
+            </select>
+            <input type="number" id="inputProjektleiterLimit" min="1" placeholder="Max. Projekte" style="width:120px;">
+            <button class="btn btn-ghost" id="btnSetProjektleiterLimit">Limit setzen</button>
+          </div>
+          <h4 class="settings-subhead" style="margin-top:14px;">Obermonteure</h4>
+          <ul class="tag-list" id="listObermonteurLimits"></ul>
+          <div class="add-row">
+            <select id="selectObermonteurLimit" class="select-input">
+              <option value="">Person wählen …</option>
+            </select>
+            <input type="number" id="inputObermonteurLimit" min="1" placeholder="Max. Projekte" style="width:120px;">
+            <button class="btn btn-ghost" id="btnSetObermonteurLimit">Limit setzen</button>
+          </div>
         </div>
 
         <div class="settings-card">

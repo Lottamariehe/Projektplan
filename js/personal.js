@@ -301,7 +301,7 @@
     const tagsLine = Array.isArray(p.tags) && p.tags.length ? `\nTags: ${p.tags.join(", ")}` : "";
     let t = `${p.name}\nMitarbeiter: ${(employee.vorname + " " + employee.nachname).trim()}`
       + `\nAuftraggeber: ${p.auftraggeber || "–"}`
-      + `\nZeitraum: KW ${s.startWeek}/${s.startYear} – KW ${s.endWeek}/${s.endYear}${entry.hasOverride ? " (eigener Einsatzabschnitt)" : " (gesamte Projektlaufzeit)"}`
+      + `\nZeitraum: KW ${s.startWeek}/${s.startYear} – KW ${s.endWeek}/${s.endYear}${entry.hasOverride ? " (eigener Einsatzabschnitt)" : (s.phaseId ? " (automatisch je Bauabschnitt)" : " (gesamte Projektlaufzeit)")}`
       + `\nDauer: ${weeksCount} KW`
       + `\nProjektleiter: ${p.projektleiter || "–"} · Obermonteur: ${p.obermonteur || "–"}`
       + `\nStatus: ${p.status}${tagsLine}`;
@@ -477,9 +477,26 @@
         if (idx >= 0) list[idx] = Object.assign({}, list[idx], newSpan);
         else list.push(Object.assign({ id: null }, newSpan));
       } else {
-        // Bisher galt die gesamte Projektlaufzeit (kein eigener Abschnitt) -
-        // durch das Ziehen entsteht jetzt der erste eigene Einsatzabschnitt.
-        list.push(Object.assign({ id: null }, newSpan));
+        const phases = App.getProjectPhases(project);
+        const draggedPhaseId = dragBarState.entry.span && dragBarState.entry.span.phaseId;
+        if (!list.length && phases.length && draggedPhaseId) {
+          // Der Mitarbeiter folgte bisher implizit ALLEN Bauabschnitten (kein
+          // eigener Einsatzabschnitt hinterlegt). Beim Ziehen EINES Abschnitts
+          // müssen alle Abschnitte als eigene Einsatzabschnitte übernommen
+          // werden - sonst würden die übrigen (nicht gezogenen) Abschnitte
+          // beim Speichern verschwinden.
+          phases.forEach((ph) => {
+            if (ph.id === draggedPhaseId) {
+              list.push(Object.assign({ id: null }, newSpan));
+            } else {
+              list.push({ id: null, startYear: ph.startYear, startWeek: ph.startWeek, endYear: ph.endYear, endWeek: ph.endWeek });
+            }
+          });
+        } else {
+          // Bisher galt die gesamte Projektlaufzeit (kein eigener Abschnitt) -
+          // durch das Ziehen entsteht jetzt der erste eigene Einsatzabschnitt.
+          list.push(Object.assign({ id: null }, newSpan));
+        }
       }
       assignmentPeriods[employeeId] = list;
 

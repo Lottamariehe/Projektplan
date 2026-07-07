@@ -42,6 +42,8 @@
     fillSelect(document.getElementById("filterStatus"), Storage.PROJECT_STATUS, App.state.ui.filters.status);
     fillSelect(document.getElementById("filterLeiter"), App.state.settings.projektleiter, App.state.ui.filters.leiter);
     fillSelect(document.getElementById("filterTag"), Storage.PROJECT_TAGS, App.state.ui.filters.tag);
+    const projektartNames = (App.state.settings.projektarten || Storage.DEFAULT_PROJEKTARTEN).map((pa) => pa.name);
+    fillSelect(document.getElementById("filterProjektart"), projektartNames, App.state.ui.filters.projektart);
     fillSelect(document.getElementById("filterAusschreibungStatus"), Storage.TENDER_STATUS, App.state.ui.tenderFilters.status);
     fillSelect(document.getElementById("filterAusschreibungGewerk"), Storage.TENDER_GEWERKE, App.state.ui.tenderFilters.gewerk);
     const zustList = Array.from(new Set(App.state.tenders.map((t) => t.zustaendigIntern).filter(Boolean)));
@@ -113,9 +115,80 @@
       `<div class="color-swatch" style="background:${c};" title="${c}"></div>`
     ).join("");
 
+    renderProjektartenList();
+    renderPersonLimitsCard();
     renderPortalsCard();
     renderCriticalActionsCard();
     renderAdminCard();
+  }
+
+  /** Projektarten-Verwaltung: Name + Farbe, frei erweiterbar (siehe Aufgabe
+   *  "Projektart und farbliche Kennzeichnung"). Lebt in settings.projektarten
+   *  (JSON-Feld) - keine eigene DB-Tabelle. */
+  function renderProjektartenList() {
+    const s = App.state.settings;
+    const list = document.getElementById("listProjektarten");
+    if (!list) return;
+    const arten = s.projektarten || (s.projektarten = Storage.DEFAULT_PROJEKTARTEN.slice());
+    list.innerHTML = arten.map((pa, i) => `<li class="projektart-item">
+        <span class="projektart-swatch" style="background:${Util.escapeHtml(pa.color)};"></span>
+        <span class="projektart-name">${Util.escapeHtml(pa.name)}</span>
+        <input type="color" class="projektart-color-input" data-i="${i}" value="${Util.escapeHtml(pa.color)}" title="Farbe ändern">
+        <button data-i="${i}" aria-label="Entfernen">&times;</button>
+      </li>`).join("") || `<li style="background:none;border:none;color:var(--color-text-faint);">Noch keine Projektarten angelegt.</li>`;
+
+    list.querySelectorAll(".projektart-color-input").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        arten[parseInt(inp.dataset.i, 10)].color = inp.value;
+        App.scheduleSave();
+        renderProjektartenList();
+        App.emit("change");
+      });
+    });
+    list.querySelectorAll("button[data-i]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        arten.splice(parseInt(btn.dataset.i, 10), 1);
+        App.scheduleSave();
+        renderSettingsView();
+        populateFilterOptions();
+        App.emit("change");
+      });
+    });
+  }
+
+  /** Optionale, standardmäßig deaktivierte Kapazitätsgrenzen je Projektleiter/
+   *  Obermonteur (siehe Aufgabe "Konflikterkennung überarbeiten"). Ohne
+   *  hinterlegtes Limit betreut eine Person beliebig viele Projekte
+   *  gleichzeitig - das ist ausdrücklich kein Konflikt. */
+  function renderPersonLimitsCard() {
+    const s = App.state.settings;
+    if (!s.projektleiterLimits) s.projektleiterLimits = {};
+    if (!s.obermonteurLimits) s.obermonteurLimits = {};
+
+    renderLimitList("listProjektleiterLimits", s.projektleiterLimits, "Projektleiter");
+    renderLimitList("listObermonteurLimits", s.obermonteurLimits, "Obermonteur");
+
+    fillSelect(document.getElementById("selectProjektleiterLimit"), s.projektleiter, "");
+    fillSelect(document.getElementById("selectObermonteurLimit"), s.obermonteure, "");
+  }
+
+  function renderLimitList(ulId, limits, roleLabel) {
+    const ul = document.getElementById(ulId);
+    if (!ul) return;
+    const names = Object.keys(limits);
+    ul.innerHTML = names.length
+      ? names.map((name) => `<li>${Util.escapeHtml(name)}: max. ${Util.escapeHtml(String(limits[name]))} gleichzeitige Projekte
+          <button data-name="${Util.escapeHtml(name)}" aria-label="Limit entfernen">&times;</button></li>`).join("")
+      : `<li style="background:none;border:none;color:var(--color-text-faint);">Kein Limit hinterlegt – unbegrenzt (Standard).</li>`;
+    ul.querySelectorAll("button[data-name]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        delete limits[btn.dataset.name];
+        App.scheduleSave();
+        renderPersonLimitsCard();
+        App.emit("change");
+        Toast.show(roleLabel + "-Limit entfernt.");
+      });
+    });
   }
 
   function renderPortalsCard() {
@@ -189,6 +262,46 @@
       App.scheduleSave();
       renderSettingsView();
       Toast.show("Obermonteur hinzugefügt.");
+    });
+
+    document.getElementById("btnAddProjektart").addEventListener("click", () => {
+      const nameInput = document.getElementById("inputNeueProjektart");
+      const colorInput = document.getElementById("inputNeueProjektartFarbe");
+      const name = nameInput.value.trim();
+      if (!name) return;
+      const s = App.state.settings;
+      if (!s.projektarten) s.projektarten = Storage.DEFAULT_PROJEKTARTEN.slice();
+      if (s.projektarten.some((pa) => pa.name === name)) { Toast.show("Diese Projektart existiert bereits."); return; }
+      s.projektarten.push({ name, color: colorInput.value || "#d6ebfb" });
+      nameInput.value = "";
+      App.scheduleSave();
+      renderSettingsView();
+      populateFilterOptions();
+      Toast.show("Projektart hinzugefügt.");
+    });
+
+    document.getElementById("btnSetProjektleiterLimit").addEventListener("click", () => {
+      const person = document.getElementById("selectProjektleiterLimit").value;
+      const val = parseInt(document.getElementById("inputProjektleiterLimit").value, 10);
+      if (!person || !val || val < 1) { Toast.show("Bitte Person und ein gültiges Limit (≥ 1) wählen."); return; }
+      App.state.settings.projektleiterLimits[person] = val;
+      document.getElementById("inputProjektleiterLimit").value = "";
+      App.scheduleSave();
+      renderPersonLimitsCard();
+      App.emit("change");
+      Toast.show("Limit für " + person + " gespeichert.");
+    });
+
+    document.getElementById("btnSetObermonteurLimit").addEventListener("click", () => {
+      const person = document.getElementById("selectObermonteurLimit").value;
+      const val = parseInt(document.getElementById("inputObermonteurLimit").value, 10);
+      if (!person || !val || val < 1) { Toast.show("Bitte Person und ein gültiges Limit (≥ 1) wählen."); return; }
+      App.state.settings.obermonteurLimits[person] = val;
+      document.getElementById("inputObermonteurLimit").value = "";
+      App.scheduleSave();
+      renderPersonLimitsCard();
+      App.emit("change");
+      Toast.show("Limit für " + person + " gespeichert.");
     });
 
     document.getElementById("btnSaveSettings").addEventListener("click", () => {
@@ -284,6 +397,10 @@
     });
     document.getElementById("filterTag").addEventListener("change", (e) => {
       App.state.ui.filters.tag = e.target.value;
+      App.emit("change");
+    });
+    document.getElementById("filterProjektart").addEventListener("change", (e) => {
+      App.state.ui.filters.projektart = e.target.value;
       App.emit("change");
     });
     document.getElementById("toggleAusschreibungen").addEventListener("change", (e) => {

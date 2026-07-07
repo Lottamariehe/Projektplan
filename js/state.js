@@ -33,7 +33,7 @@
         weeks: [],
         weekIndex: {},
         focusedYear: new Date().getFullYear(),
-        filters: { status: "", leiter: "", tag: "", showTenderPreview: true, showMitarbeiter: true },
+        filters: { status: "", leiter: "", tag: "", projektart: "", showTenderPreview: true, showMitarbeiter: true },
         tenderFilters: { status: "", zustaendig: "", gewerk: "" },
         search: "",
         tenderSort: { key: "submissionDatum", dir: "asc" },
@@ -477,6 +477,7 @@
         if (f.status && p.status !== f.status) return false;
         if (f.leiter && p.projektleiter !== f.leiter) return false;
         if (f.tag && !(Array.isArray(p.tags) && p.tags.includes(f.tag))) return false;
+        if (f.projektart && (p.projektart || "") !== f.projektart) return false;
         if (search) {
           const hay = [p.name, p.auftraggeber, p.adresse, p.projektleiter, p.obermonteur, p.bemerkungen]
             .join(" ").toLowerCase();
@@ -498,7 +499,8 @@
         auftraggeber: (a, b) => (a.auftraggeber || "").localeCompare(b.auftraggeber || "", "de"),
         leiter: (a, b) => (a.projektleiter || "").localeCompare(b.projektleiter || "", "de"),
         ober: (a, b) => (a.obermonteur || "").localeCompare(b.obermonteur || "", "de"),
-        status: (a, b) => (a.status || "").localeCompare(b.status || "", "de")
+        status: (a, b) => (a.status || "").localeCompare(b.status || "", "de"),
+        projektart: (a, b) => (a.projektart || "").localeCompare(b.projektart || "", "de")
       };
       const cmp = comparators[mode] || comparators.alpha;
       return list.slice().sort((a, b) => cmp(a, b) || (a.name || "").localeCompare(b.name || "", "de"));
@@ -597,6 +599,17 @@
         return valid.map((p) => ({
           id: p.id || null, startYear: p.startYear, startWeek: p.startWeek, endYear: p.endYear, endWeek: p.endWeek, implicit: false
         })).sort((a, b) => Util.compareWeeks({ year: a.startYear, week: a.startWeek }, { year: b.startYear, week: b.startWeek }));
+      }
+      // Kein eigener Einsatzabschnitt hinterlegt: der Mitarbeiter folgt
+      // automatisch den Bauabschnitten des Projekts (falls vorhanden), statt
+      // über etwaige Bauunterbrechungen hinweg als ein durchgehender Balken
+      // dargestellt zu werden. Ohne Bauabschnitte gilt weiterhin die gesamte
+      // Projektlaufzeit (Standardfall).
+      const phases = this.getProjectPhases(project);
+      if (phases.length) {
+        return phases.map((ph) => ({
+          id: null, startYear: ph.startYear, startWeek: ph.startWeek, endYear: ph.endYear, endWeek: ph.endWeek, implicit: true, phaseId: ph.id
+        }));
       }
       return [{
         id: null, startYear: project.startYear, startWeek: project.startWeek, endYear: project.endYear, endWeek: project.endWeek, implicit: true
@@ -725,35 +738,67 @@
       return [{ startYear: project.startYear, startWeek: project.startWeek, endYear: project.endYear, endWeek: project.endWeek, phase: null }];
     },
 
-    /* ---------------- Konflikterkennung Obermonteur ---------------- */
+    /* ---------------- Konflikterkennung Projektleiter/Obermonteur ---------------- */
+    /* Mehrere gleichzeitig laufende Projekte pro Obermonteur oder Projektleiter
+       sind ausdrücklich ERLAUBT und werden standardmäßig NICHT als Konflikt
+       markiert (das ist im Handwerksalltag der Normalfall - ein Obermonteur
+       betreut z. B. mehrere kleine Baustellen parallel). Ein Konflikt entsteht
+       nur, wenn für die jeweilige Person in den Einstellungen eine maximale
+       Anzahl gleichzeitiger Projekte hinterlegt ist (settings.obermonteurLimits /
+       settings.projektleiterLimits) UND diese Grenze überschritten wird. Ohne
+       hinterlegtes Limit (Standardfall) ist die Auslastung unbegrenzt. Es gibt
+       bewusst KEINE separate "Mitarbeiter-Kapazität überschritten"-Prüfung. */
 
-    /** Erkennt, wenn mehrere (nicht stornierte) Projekte im selben Zeitraum
-     *  denselben Obermonteur benötigen (berücksichtigt Bauabschnitte, falls
-     *  vorhanden). Liefert die Menge betroffener Projekt-IDs sowie die
-     *  konkreten Konfliktpaare (für Tooltips/Banner). */
-    computeObermonteurConflicts() {
-      const bySpan = [];
-      this.state.projects.forEach((p) => {
-        if (p.status === "Storniert" || !p.obermonteur) return;
-        this.getProjectSpans(p).forEach((span) => {
-          bySpan.push({ project: p, span, idx: this.getSpan(span), obermonteur: p.obermonteur });
-        });
-      });
+    /** Ermittelt Projekt-IDs, deren zuständiger Projektleiter bzw. Obermonteur
+     *  gleichzeitig mehr Projekte betreut, als sein konfiguriertes Limit erlaubt.
+     *  Liefert { conflictProjectIds: Set, details: [{role, person, project, limit, count}] }. */
+    computePersonCapacityConflicts() {
       const conflictProjectIds = new Set();
-      const pairs = [];
-      for (let i = 0; i < bySpan.length; i++) {
-        for (let j = i + 1; j < bySpan.length; j++) {
-          if (bySpan[i].project.id === bySpan[j].project.id) continue;
-          if (bySpan[i].obermonteur !== bySpan[j].obermonteur) continue;
-          const A = bySpan[i].idx, B = bySpan[j].idx;
-          if (A.startIdx <= B.endIdx && B.startIdx <= A.endIdx) {
-            conflictProjectIds.add(bySpan[i].project.id);
-            conflictProjectIds.add(bySpan[j].project.id);
-            pairs.push({ a: bySpan[i].project, b: bySpan[j].project, obermonteur: bySpan[i].obermonteur });
-          }
-        }
-      }
-      return { conflictProjectIds, pairs };
+      const details = [];
+
+      const check = (role, limits) => {
+        if (!limits || typeof limits !== "object") return;
+        const bySpan = [];
+        this.state.projects.forEach((p) => {
+          if (p.status === "Storniert") return;
+          const person = p[role];
+          if (!person) return;
+          const limit = Number(limits[person]) || 0;
+          if (limit <= 0) return; // kein Limit hinterlegt -> keine Prüfung (Standard)
+          this.getProjectSpans(p).forEach((span) => {
+            bySpan.push({ project: p, idx: this.getSpan(span), person, limit });
+          });
+        });
+
+        // Gruppieren nach Person, dann je Projekt zählen, wie viele ANDERE
+        // Projekte derselben Person sich zeitlich überschneiden.
+        const byPerson = {};
+        bySpan.forEach((e) => { (byPerson[e.person] = byPerson[e.person] || []).push(e); });
+
+        Object.keys(byPerson).forEach((person) => {
+          const entries = byPerson[person];
+          entries.forEach((e) => {
+            const overlappingProjectIds = new Set();
+            entries.forEach((other) => {
+              if (other.project.id === e.project.id) return;
+              if (e.idx.startIdx <= other.idx.endIdx && other.idx.startIdx <= e.idx.endIdx) {
+                overlappingProjectIds.add(other.project.id);
+              }
+            });
+            const count = overlappingProjectIds.size + 1;
+            if (count > e.limit) {
+              conflictProjectIds.add(e.project.id);
+              overlappingProjectIds.forEach((id) => conflictProjectIds.add(id));
+              details.push({ role, person, project: e.project, limit: e.limit, count });
+            }
+          });
+        });
+      };
+
+      check("obermonteur", this.state.settings.obermonteurLimits);
+      check("projektleiter", this.state.settings.projektleiterLimits);
+
+      return { conflictProjectIds, details };
     },
 
     /** Greedy Intervall-Stapelung: weist jedem Eintrag eine Spur (Sub-Zeile) zu,

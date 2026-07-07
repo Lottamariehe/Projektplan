@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS projects (
   besetzung     INTEGER DEFAULT 0,
   status        TEXT NOT NULL DEFAULT 'Geplant',
   farbe         TEXT,
+  projektart    TEXT,
   bemerkungen   TEXT,
   notizen       TEXT,
   createdAt     TEXT,
@@ -234,3 +235,4 @@ CREATE INDEX IF NOT EXISTS idx_assignment_periods_project ON assignment_periods 
 CREATE INDEX IF NOT EXISTS idx_assignment_periods_employee ON assignment_periods (employeeId, startYear, startWeek, endYear, endWeek);
 CREATE INDEX IF NOT EXISTS idx_project_phases_project ON project_phases (projectId, sortOrder);
 CREATE INDEX IF NOT EXISTS idx_vacations_employee ON vacations (employeeId, startYear, startWeek, endYear, endWeek);
+CREATE INDEX IF NOT EXISTS idx_projects_projektart ON projects (projektart);

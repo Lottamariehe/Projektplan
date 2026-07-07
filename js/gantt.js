@@ -27,12 +27,12 @@
 
     const weeks = App.state.ui.weeks;
     const rows = buildRowList();
-    const obermonteurConflicts = App.computeObermonteurConflicts();
+    const personConflicts = App.computePersonCapacityConflicts();
 
     renderHeader(weeks);
-    renderSideAndBody(rows, weeks, colWidth, obermonteurConflicts);
+    renderSideAndBody(rows, weeks, colWidth, personConflicts);
     updateWarningBanner();
-    updateObermonteurBanner(obermonteurConflicts);
+    updatePersonConflictBanner(personConflicts);
     syncScrollWidth();
   }
 
@@ -57,7 +57,7 @@
     els.header.innerHTML = html;
   }
 
-  function renderSideAndBody(rows, weeks, colWidth, obermonteurConflicts) {
+  function renderSideAndBody(rows, weeks, colWidth, personConflicts) {
     if (!rows.length) {
       els.side.innerHTML = `<div class="gantt-side-row" style="color:var(--color-text-faint);cursor:default;">Keine Projekte für die aktuelle Filterauswahl.</div>`;
       els.body.innerHTML = buildRowBackgrounds(weeks, 1);
@@ -69,7 +69,7 @@
     let bodyBgHtml = buildRowBackgrounds(weeks, rows.length);
 
     rows.forEach((row) => {
-      sideHtml += buildSideRow(row, obermonteurConflicts);
+      sideHtml += buildSideRow(row, personConflicts);
     });
 
     els.side.innerHTML = sideHtml;
@@ -79,7 +79,7 @@
     // Balken als absolut positionierte Elemente einfügen (ein Projekt kann bei
     // Bauabschnitten mehrere getrennte Balken in derselben Zeile haben).
     rows.forEach((row, rowIndex) => {
-      buildBarsForRow(row, rowIndex, colWidth, obermonteurConflicts).forEach((barEl) => els.body.appendChild(barEl));
+      buildBarsForRow(row, rowIndex, colWidth, personConflicts).forEach((barEl) => els.body.appendChild(barEl));
     });
 
     // Klick auf Seitenzeile öffnet Detail/Bearbeiten
@@ -108,18 +108,31 @@
     return out;
   }
 
-  function buildSideRow(row, obermonteurConflicts) {
+  /** Liefert die Hintergrundfarbe der hinterlegten Projektart (oder null ohne
+   *  Projektart). Betrifft ausschließlich die Namenszelle in der Seitenleiste
+   *  – die Gantt-Balkenfarbe (item.farbe) bleibt davon unberührt. */
+  function projektartColor(name) {
+    if (!name) return null;
+    const list = App.state.settings.projektarten || Storage.DEFAULT_PROJEKTARTEN;
+    const match = list.find((pa) => pa.name === name);
+    return match ? match.color : null;
+  }
+
+  function buildSideRow(row, personConflicts) {
     const item = row.item;
     if (row.kind === "project") {
       const tags = Array.isArray(item.tags) ? item.tags : [];
       const tagHtml = tags.length
         ? `<span class="mini-tags">${tags.slice(0, 3).map((t) => `<span class="mini-tag">${Util.escapeHtml(t)}</span>`).join("")}${tags.length > 3 ? `<span class="mini-tag">+${tags.length - 3}</span>` : ""}</span>`
         : "";
-      const hasConflict = obermonteurConflicts && obermonteurConflicts.conflictProjectIds.has(item.id);
+      const hasConflict = personConflicts && personConflicts.conflictProjectIds.has(item.id);
       const phaseCount = App.getProjectPhases(item).length;
       const phaseHint = phaseCount ? `<span class="mini-tag phase-tag">${phaseCount} Bauabschnitte</span>` : "";
+      const artColor = projektartColor(item.projektart);
+      const nameStyle = artColor ? ` style="background:${artColor};"` : "";
+      const artHint = item.projektart ? ` title="Projektart: ${Util.escapeHtml(item.projektart)}"` : "";
       return `<div class="gantt-side-row ${hasConflict ? "row-conflict" : ""}" data-id="${item.id}" data-kind="project">
-        <span class="p-name">${Util.escapeHtml(item.name)}${hasConflict ? ' <span class="conflict-icon" title="Obermonteur-Konflikt: mehrere Projekte benötigen gleichzeitig denselben Obermonteur">⚠</span>' : ""}</span>
+        <span class="p-name p-name-projektart"${nameStyle}${artHint}>${Util.escapeHtml(item.name)}${hasConflict ? ' <span class="conflict-icon" title="Kapazitätsgrenze überschritten – siehe Einstellungen">⚠</span>' : ""}</span>
         <span class="p-meta">${Util.escapeHtml(item.projektleiter || "–")} · ${Util.escapeHtml(item.obermonteur || "–")} · ${(item.employeeIds || []).length || item.besetzung || 0} MA${tagHtml}${phaseHint}</span>
       </div>`;
     }
@@ -131,14 +144,14 @@
 
   /** Baut die Balken einer Zeile: bei Bauabschnitten ein Balken je Abschnitt,
    *  sonst genau ein Balken über die gesamte Laufzeit (Standardfall). */
-  function buildBarsForRow(row, rowIndex, colWidth, obermonteurConflicts) {
-    if (row.kind !== "project") return [buildBarEl(row, rowIndex, colWidth, null, obermonteurConflicts)];
+  function buildBarsForRow(row, rowIndex, colWidth, personConflicts) {
+    if (row.kind !== "project") return [buildBarEl(row, rowIndex, colWidth, null, personConflicts)];
     const phases = App.getProjectPhases(row.item);
-    if (!phases.length) return [buildBarEl(row, rowIndex, colWidth, null, obermonteurConflicts)];
-    return phases.map((phase) => buildBarEl(row, rowIndex, colWidth, phase, obermonteurConflicts));
+    if (!phases.length) return [buildBarEl(row, rowIndex, colWidth, null, personConflicts)];
+    return phases.map((phase) => buildBarEl(row, rowIndex, colWidth, phase, personConflicts));
   }
 
-  function buildBarEl(row, rowIndex, colWidth, phase, obermonteurConflicts) {
+  function buildBarEl(row, rowIndex, colWidth, phase, personConflicts) {
     const item = row.item;
     const span = phase || item;
     const { startIdx, endIdx } = App.getSpan(span);
@@ -155,7 +168,7 @@
 
     if (row.kind === "project") {
       bar.style.background = item.farbe || "#2f6fed";
-      if (obermonteurConflicts && obermonteurConflicts.conflictProjectIds.has(item.id)) bar.classList.add("bar-conflict");
+      if (personConflicts && personConflicts.conflictProjectIds.has(item.id)) bar.classList.add("bar-conflict");
     } else {
       bar.style.background = "#8b93a3";
       if (App.tenderOverlapsAnyProject(item)) bar.classList.add("overlap");
@@ -163,9 +176,18 @@
 
     const label = document.createElement("span");
     label.className = "bar-label";
-    label.textContent = phase && phase.name ? item.name + " – " + phase.name : item.name;
+    if (row.kind === "project") {
+      const mainText = phase && phase.name ? item.name + " – " + phase.name : item.name;
+      const subParts = [];
+      if (item.projektleiter) subParts.push("PL " + item.projektleiter);
+      if (item.obermonteur) subParts.push("OM " + item.obermonteur);
+      label.innerHTML = `<span class="bar-label-main">${Util.escapeHtml(mainText)}</span>` +
+        (subParts.length ? `<span class="bar-label-sub">${Util.escapeHtml(subParts.join(" · "))}</span>` : "");
+    } else {
+      label.textContent = item.name;
+    }
     bar.appendChild(label);
-    bar.title = buildTooltip(row, phase, obermonteurConflicts);
+    bar.title = buildTooltip(row, phase, personConflicts);
 
     if (row.kind === "project") {
       const leftHandle = document.createElement("div");
@@ -192,7 +214,7 @@
     return bar;
   }
 
-  function buildTooltip(row, phase, obermonteurConflicts) {
+  function buildTooltip(row, phase, personConflicts) {
     const item = row.item;
     if (row.kind === "project") {
       const names = App.employeeNames(item.employeeIds);
@@ -201,13 +223,15 @@
       const span = phase || item;
       const phaseLine = phase ? `\nBauabschnitt: ${phase.name || "(ohne Bezeichnung)"}` : "";
       let conflictLine = "";
-      if (obermonteurConflicts && obermonteurConflicts.conflictProjectIds.has(item.id)) {
-        const others = obermonteurConflicts.pairs
-          .filter((pr) => pr.obermonteur === item.obermonteur && (pr.a.id === item.id || pr.b.id === item.id))
-          .map((pr) => (pr.a.id === item.id ? pr.b : pr.a).name);
-        conflictLine = `\n⚠ Obermonteur-Konflikt mit: ${Array.from(new Set(others)).join(", ")}`;
+      if (personConflicts && personConflicts.conflictProjectIds.has(item.id)) {
+        const relevant = personConflicts.details.filter((d) => d.project.id === item.id);
+        const lines = relevant.map((d) =>
+          `${d.role === "obermonteur" ? "Obermonteur" : "Projektleiter"} ${d.person} (${d.count}/${d.limit} gleichzeitige Projekte)`
+        );
+        conflictLine = lines.length ? `\n⚠ Kapazitätsgrenze überschritten: ${lines.join("; ")}` : "";
       }
-      return `${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nProjektleiter: ${item.projektleiter || "–"}\nObermonteur: ${item.obermonteur || "–"}\nBesetzung: ${item.besetzung || 0} Mitarbeitende\nStatus: ${item.status}\nZeitraum: KW ${span.startWeek}/${span.startYear} – KW ${span.endWeek}/${span.endYear}${phaseLine}${tagLine}${mitarbeiterLine}${conflictLine}`;
+      const projektartLine = item.projektart ? `\nProjektart: ${item.projektart}` : "";
+      return `${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nProjektleiter: ${item.projektleiter || "–"}\nObermonteur: ${item.obermonteur || "–"}\nBesetzung: ${item.besetzung || 0} Mitarbeitende\nStatus: ${item.status}\nZeitraum: KW ${span.startWeek}/${span.startYear} – KW ${span.endWeek}/${span.endYear}${phaseLine}${projektartLine}${tagLine}${mitarbeiterLine}${conflictLine}`;
     }
     const gewerkeLine = Array.isArray(item.gewerke) && item.gewerke.length ? `\nGewerke: ${item.gewerke.join(", ")}` : "";
     return `Ausschreibung: ${item.name}\nAuftraggeber: ${item.auftraggeber || "–"}\nStatus: ${item.angebotsstatus}\nGeplanter Zeitraum: KW ${item.startWeek}/${item.startYear} – KW ${item.endWeek}/${item.endYear}${gewerkeLine}\nKlicken zum Bearbeiten / Umwandeln.`;
@@ -219,22 +243,25 @@
     else Modals.openTenderModal(row.item.id);
   }
 
-  /** Zeigt einen Hinweis, wenn mehrere Projekte im selben Zeitraum denselben
-   *  Obermonteur benötigen würden (siehe App.computeObermonteurConflicts). */
-  function updateObermonteurBanner(conflicts) {
+  /** Zeigt einen Hinweis, wenn ein Projektleiter oder Obermonteur sein
+   *  konfiguriertes Limit an gleichzeitigen Projekten überschreitet (siehe
+   *  App.computePersonCapacityConflicts). Mehrere gleichzeitige Projekte pro
+   *  Person sind Standardfall und ohne konfiguriertes Limit NIE ein Konflikt. */
+  function updatePersonConflictBanner(conflicts) {
     const el = document.getElementById("obermonteurWarning");
     if (!el) return;
-    if (!conflicts || !conflicts.pairs.length) { el.classList.add("hidden"); return; }
+    if (!conflicts || !conflicts.details.length) { el.classList.add("hidden"); return; }
     const seen = new Set();
     const lines = [];
-    conflicts.pairs.forEach((pr) => {
-      const key = [pr.a.id, pr.b.id].sort().join("|");
+    conflicts.details.forEach((d) => {
+      const key = d.role + "|" + d.person;
       if (seen.has(key)) return;
       seen.add(key);
-      lines.push(`${pr.obermonteur}: „${pr.a.name}“ ↔ „${pr.b.name}“`);
+      const roleLabel = d.role === "obermonteur" ? "Obermonteur" : "Projektleiter";
+      lines.push(`${roleLabel} ${d.person}: ${d.count}/${d.limit} gleichzeitige Projekte`);
     });
     el.className = "capacity-warning critical";
-    el.textContent = "Obermonteur-Konflikt – " + lines.join(" · ");
+    el.textContent = "Kapazitätsgrenze überschritten – " + lines.join(" · ");
     el.classList.remove("hidden");
   }
 

@@ -371,6 +371,7 @@ main{
 }
 .gantt-side-row:hover{ background: var(--color-bg); }
 .gantt-side-row .p-name{ font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 232px; }
+.gantt-side-row .p-name-projektart{ padding: 1px 7px; border-radius: 5px; margin-left: -7px; }
 .gantt-side-row .p-meta{ font-size: 11px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 232px; }
 
 .gantt-body{
@@ -413,7 +414,12 @@ main{
 }
 .gantt-bar:hover{ box-shadow: var(--shadow-md); filter: brightness(1.04); }
 .gantt-bar.dragging{ cursor: grabbing; opacity: .85; z-index: 20; }
-.gantt-bar .bar-label{ overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.gantt-bar .bar-label{
+  display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  overflow: hidden; text-overflow: ellipsis; pointer-events: none; line-height: 1.15; width: 100%;
+}
+.gantt-bar .bar-label-main{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gantt-bar .bar-label-sub{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 500; opacity: 0.88; }
 
 .gantt-bar .resize-handle{
   position: absolute;
@@ -584,6 +590,19 @@ main{
 
 .add-row{ display: flex; gap: 8px; }
 .add-row input{ flex: 1; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+.add-row select{ flex: 1; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
+
+.settings-subhead{ margin: 0 0 8px; font-size: 12.5px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .03em; }
+
+.projektart-item .projektart-swatch{
+  width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--color-border); flex-shrink: 0;
+}
+.projektart-item .projektart-name{ font-weight: 600; }
+.projektart-item .projektart-color-input{
+  width: 24px; height: 24px; padding: 0; border: none; border-radius: 4px; cursor: pointer; background: none;
+}
+.projektart-add-row input[type="text"]{ flex: 1; }
+.projektart-add-row input[type="color"]{ flex: 0 0 44px; width: 44px; height: 36px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; }
 
 .form-row{ margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
 .form-row label{ font-size: 12.5px; color: var(--color-text-muted); }

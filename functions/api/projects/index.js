@@ -47,8 +47,8 @@ export async function onRequestPost(context) {
       db.prepare(
         `INSERT INTO projects
           (id, name, auftraggeber, adresse, startYear, startWeek, endYear, endWeek,
-           projektleiter, obermonteur, besetzung, status, farbe, bemerkungen, notizen, createdAt, updatedAt)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+           projektleiter, obermonteur, besetzung, status, farbe, projektart, bemerkungen, notizen, createdAt, updatedAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         body.id,
         body.name,
@@ -63,6 +63,7 @@ export async function onRequestPost(context) {
         body.besetzung || 0,
         body.status || "Geplant",
         body.farbe || "#2f6fed",
+        body.projektart || "",
         body.bemerkungen || "",
         body.notizen || "",
         body.createdAt || now,
